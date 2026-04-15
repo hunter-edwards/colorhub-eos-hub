@@ -88,3 +88,47 @@ export const headlines = pgTable('headlines', {
   authorId: uuid('author_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const scorecardComparator = pgEnum('scorecard_comparator', ['gte', 'lte', 'eq', 'range']);
+export const meetingType = pgEnum('meeting_type', ['L10', 'quarterly', 'annual']);
+
+export const scorecardMetrics = pgTable('scorecard_metrics', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  name: text('name').notNull(),
+  ownerId: uuid('owner_id').references(() => users.id).notNull(),
+  goal: numeric('goal'),
+  comparator: scorecardComparator('comparator').notNull().default('gte'),
+  goalMin: numeric('goal_min'),
+  goalMax: numeric('goal_max'),
+  unit: text('unit'),
+  orderIdx: integer('order_idx').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const scorecardEntries = pgTable('scorecard_entries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  metricId: uuid('metric_id').references(() => scorecardMetrics.id, { onDelete: 'cascade' }).notNull(),
+  weekStart: date('week_start').notNull(),
+  value: numeric('value'),
+  note: text('note'),
+});
+
+export const meetings = pgTable('meetings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  type: meetingType('type').notNull().default('L10'),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  endedAt: timestamp('ended_at'),
+  ratingAvg: numeric('rating_avg'),
+  attendees: jsonb('attendees').notNull().default([]),
+  aiSummaryMd: text('ai_summary_md'),
+  teamsPostedAt: timestamp('teams_posted_at'),
+});
+
+export const meetingRatings = pgTable('meeting_ratings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  rating: integer('rating').notNull(),
+});
