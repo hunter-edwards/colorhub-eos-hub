@@ -29,6 +29,13 @@
       "when": 1776287687535,
       "tag": "0003_petite_blockbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776288388226,
+      "tag": "0004_heavy_thunderbolts",
+      "breakpoints": true
     }
   ]
 }

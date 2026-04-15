@@ -1,0 +1,4 @@
+ALTER TABLE "headlines" ADD CONSTRAINT "headlines_meeting_id_meetings_id_fk" FOREIGN KEY ("meeting_id") REFERENCES "public"."meetings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "todos" ADD CONSTRAINT "todos_source_meeting_id_meetings_id_fk" FOREIGN KEY ("source_meeting_id") REFERENCES "public"."meetings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "meeting_ratings" ADD CONSTRAINT "meeting_ratings_meeting_user_unique" UNIQUE("meeting_id","user_id");--> statement-breakpoint
+ALTER TABLE "scorecard_entries" ADD CONSTRAINT "scorecard_entries_metric_week_unique" UNIQUE("metric_id","week_start");

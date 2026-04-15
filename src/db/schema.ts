@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, numeric, date, boolean, pgEnum, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, numeric, date, boolean, pgEnum, jsonb, unique } from 'drizzle-orm/pg-core';
 
 // Single team for now; team_id reserved for future multi-tenant.
 export const teams = pgTable('teams', {
@@ -31,7 +31,7 @@ export const rocks = pgTable('rocks', {
   progressPct: integer('progress_pct').notNull().default(0),
   dueDate: date('due_date'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
 export const rockSubtasks = pgTable('rock_subtasks', {
@@ -64,7 +64,7 @@ export const todos = pgTable('todos', {
   ownerId: uuid('owner_id').references(() => users.id).notNull(),
   dueDate: date('due_date').notNull(),
   status: todoStatus('status').notNull().default('open'),
-  sourceMeetingId: uuid('source_meeting_id'),
+  sourceMeetingId: uuid('source_meeting_id').references(() => meetings.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -82,7 +82,7 @@ export const issues = pgTable('issues', {
 
 export const headlines = pgTable('headlines', {
   id: uuid('id').primaryKey().defaultRandom(),
-  meetingId: uuid('meeting_id').notNull(),
+  meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
   kind: headlineKind('kind').notNull(),
   text: text('text').notNull(),
   authorId: uuid('author_id').references(() => users.id).notNull(),
@@ -112,7 +112,9 @@ export const scorecardEntries = pgTable('scorecard_entries', {
   weekStart: date('week_start').notNull(),
   value: numeric('value'),
   note: text('note'),
-});
+}, (t) => ({
+  metricWeekUnique: unique('scorecard_entries_metric_week_unique').on(t.metricId, t.weekStart),
+}));
 
 export const meetings = pgTable('meetings', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -131,4 +133,6 @@ export const meetingRatings = pgTable('meeting_ratings', {
   meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
   userId: uuid('user_id').references(() => users.id).notNull(),
   rating: integer('rating').notNull(),
-});
+}, (t) => ({
+  meetingUserUnique: unique('meeting_ratings_meeting_user_unique').on(t.meetingId, t.userId),
+}));
