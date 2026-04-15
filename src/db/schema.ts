@@ -51,3 +51,40 @@ export const rockActivity = pgTable('rock_activity', {
   payload: jsonb('payload').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const todoStatus = pgEnum('todo_status', ['open', 'done']);
+export const issueList = pgEnum('issue_list', ['short_term', 'long_term']);
+export const issueStatus = pgEnum('issue_status', ['open', 'solved', 'dropped']);
+export const headlineKind = pgEnum('headline_kind', ['customer', 'employee']);
+
+export const todos = pgTable('todos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  title: text('title').notNull(),
+  ownerId: uuid('owner_id').references(() => users.id).notNull(),
+  dueDate: date('due_date').notNull(),
+  status: todoStatus('status').notNull().default('open'),
+  sourceMeetingId: uuid('source_meeting_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const issues = pgTable('issues', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  title: text('title').notNull(),
+  description: text('description'),
+  ownerId: uuid('owner_id').references(() => users.id),
+  list: issueList('list').notNull().default('short_term'),
+  status: issueStatus('status').notNull().default('open'),
+  solvedAt: timestamp('solved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const headlines = pgTable('headlines', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  meetingId: uuid('meeting_id').notNull(),
+  kind: headlineKind('kind').notNull(),
+  text: text('text').notNull(),
+  authorId: uuid('author_id').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
