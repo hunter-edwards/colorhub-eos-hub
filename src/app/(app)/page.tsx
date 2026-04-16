@@ -8,6 +8,9 @@ import { listMeetings } from '@/server/meetings';
 import { currentQuarter } from '@/lib/quarters';
 import { getWeekStarts, evaluateEntry } from '@/lib/scorecard-utils';
 import Link from 'next/link';
+import { ScorecardChart } from '@/components/charts/scorecard-chart';
+import { MeetingChart } from '@/components/charts/meeting-chart';
+import { RockChart } from '@/components/charts/rock-chart';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -16,11 +19,12 @@ export default async function DashboardPage() {
   const quarter = currentQuarter();
   const [weekStart] = getWeekStarts(1);
 
-  const [allRocks, myTodos, metrics, entries, allMeetings] = await Promise.all([
+  const [allRocks, myTodos, metrics, entries, trendEntries, allMeetings] = await Promise.all([
     listRocks(quarter),
     listMyTodos(),
     listMetrics(),
     listEntries(weekStart, 1),
+    listEntries(weekStart, 13),
     listMeetings(),
   ]);
 
@@ -33,6 +37,30 @@ export default async function DashboardPage() {
     const color = val != null ? evaluateEntry(m, Number(val)) : null;
     return { ...m, value: val, color };
   });
+
+  // Chart data: scorecard trend entries
+  const metricNameMap = new Map(metrics.map((m) => [m.id, m.name]));
+  const scorecardChartData = trendEntries.map((e) => ({
+    metricId: e.metricId,
+    metricName: metricNameMap.get(e.metricId) ?? 'Unknown',
+    weekStart: e.weekStart,
+    value: e.value != null ? Number(e.value) : null,
+  }));
+
+  // Chart data: meeting ratings (last 10 completed meetings with ratings)
+  const meetingChartData = allMeetings
+    .filter((m) => m.endedAt && m.ratingAvg != null)
+    .slice(0, 10)
+    .map((m) => ({
+      date: m.startedAt.toISOString().slice(0, 10),
+      rating: Number(m.ratingAvg),
+    }));
+
+  // Chart data: rock status distribution
+  const rockStatusCounts = (['on_track', 'off_track', 'done'] as const).map((status) => ({
+    status,
+    count: allRocks.filter((r) => r.status === status).length,
+  }));
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -222,6 +250,55 @@ export default async function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Quarterly Review */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            <Link href="/quarterly-review" className="hover:underline">
+              Quarterly Review
+            </Link>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Run a guided end-of-quarter review: rocks, people, V/TO, and next quarter planning.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Trends */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Trends</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Scorecard — 13 Week Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScorecardChart entries={scorecardChartData} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Meeting Ratings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MeetingChart meetings={meetingChartData} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Rock Status — {quarter}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RockChart rocks={rockStatusCounts} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

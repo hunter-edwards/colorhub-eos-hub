@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react';
 import { listMetrics, listEntries, setEntry } from '@/server/scorecard';
 import { getWeekStarts, evaluateEntry } from '@/lib/scorecard-utils';
 import { createIssue } from '@/server/issues';
+import { UserAvatar } from '@/components/user-avatar';
 
 type Metric = {
   id: string;
@@ -54,7 +55,10 @@ export function ScorecardPanel({ meetingId }: { meetingId: string }) {
           >
             <div className="flex-1">
               <div className="text-sm font-medium">{m.name}</div>
-              <div className="text-xs text-muted-foreground">{m.ownerName || m.ownerEmail}</div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <UserAvatar user={{ name: m.ownerName }} size="sm" />
+                {m.ownerName || m.ownerEmail}
+              </div>
             </div>
             <input
               type="number"

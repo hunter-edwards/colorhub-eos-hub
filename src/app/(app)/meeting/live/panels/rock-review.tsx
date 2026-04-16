@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import { listRocks, updateRockStatus } from '@/server/rocks';
 import { createIssue } from '@/server/issues';
+import { UserAvatar } from '@/components/user-avatar';
 import { currentQuarter } from '@/lib/quarters';
 
 type Rock = {
@@ -55,7 +56,8 @@ export function RockReviewPanel({ meetingId }: { meetingId: string }) {
           <div key={r.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent">
             <div className="flex-1">
               <div className="text-sm font-medium">{r.title}</div>
-              <div className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <UserAvatar user={{ name: r.ownerName }} size="sm" />
                 {r.ownerName || r.ownerEmail} — {r.progressPct}%
               </div>
             </div>

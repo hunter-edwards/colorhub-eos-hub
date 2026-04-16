@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { Printer } from 'lucide-react';
 import { setRating, listPeopleRatings } from '@/server/people-analyzer';
 
 type Member = { id: string; name: string | null; profileColor: string | null };
@@ -170,14 +171,14 @@ export function PeopleMatrix({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <label htmlFor="quarter-select" className="text-sm font-medium">
+        <label htmlFor="quarter-select" className="text-sm font-medium no-print">
           Quarter
         </label>
         <select
           id="quarter-select"
           value={selectedQuarter}
           onChange={(e) => handleQuarterChange(e.target.value)}
-          className="flex h-8 rounded-lg border border-input bg-transparent px-3 text-sm"
+          className="flex h-8 rounded-lg border border-input bg-transparent px-3 text-sm no-print"
         >
           {quarters.map((q) => (
             <option key={q} value={q}>
@@ -188,6 +189,14 @@ export function PeopleMatrix({
         {isPending && (
           <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
         )}
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="no-print ml-auto inline-flex items-center gap-1 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm font-medium hover:bg-accent"
+        >
+          <Printer className="h-4 w-4" />
+          Print
+        </button>
       </div>
 
       <div className="overflow-x-auto">

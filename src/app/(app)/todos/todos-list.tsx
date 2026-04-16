@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Trash2, RotateCcw, Plus, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
+import { UserAvatar } from '@/components/user-avatar';
 import { createTodo, toggleTodo, dropTodo, carryOverTodo } from '@/server/todos';
 
 type Todo = {
@@ -52,7 +53,8 @@ function TodoRow({ todo }: { todo: Todo }) {
       <span className={`flex-1 text-sm ${optimisticStatus === 'done' ? 'line-through text-muted-foreground' : ''}`}>
         {todo.title}
       </span>
-      <span className="text-xs text-muted-foreground">
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <UserAvatar user={{ name: todo.ownerName }} size="sm" />
         {todo.ownerName || todo.ownerEmail}
       </span>
       <span className={`text-xs ${dl.overdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>

@@ -8,6 +8,7 @@ import { CheckCircle, Plus } from 'lucide-react';
 import { listIssues, solveIssue, createIssue } from '@/server/issues';
 import { createTodo } from '@/server/todos';
 import { listTeamMembers } from '@/server/rocks';
+import { UserAvatar } from '@/components/user-avatar';
 
 type Issue = {
   id: string;
@@ -55,7 +56,8 @@ export function IDSPanel({ meetingId }: { meetingId: string }) {
             }`}
           >
             <span className="flex-1">{issue.title}</span>
-            <span className="text-xs opacity-70">
+            <span className="flex items-center gap-1 text-xs opacity-70">
+              <UserAvatar user={{ name: issue.ownerName }} size="sm" />
               {issue.ownerName || issue.ownerEmail || ''}
             </span>
           </div>
@@ -72,7 +74,7 @@ export function IDSPanel({ meetingId }: { meetingId: string }) {
             <div>
               <h3 className="font-medium">{active.title}</h3>
               <p className="text-xs text-muted-foreground">
-                Owner: {active.ownerName || active.ownerEmail || 'Unassigned'}
+                Owner: <UserAvatar user={{ name: active.ownerName }} size="sm" className="inline-block mx-1" />{active.ownerName || active.ownerEmail || 'Unassigned'}
               </p>
             </div>
 
