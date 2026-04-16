@@ -25,6 +25,7 @@ function getKnackConfig(): KnackConfig | null {
 /** Map of KPI name → scorecard metric name (must match what's in the DB). */
 const KPI_METRIC_MAP = {
   parentJobsShipped: 'Parent Jobs Shipped',
+  parentJobsInvoiced: 'Parent Jobs Invoiced',
   avgDaysOrderToShip: 'Avg Days Order→Ship',
   onTimeDeliveryPct: 'On-Time Delivery %',
   weeklyRevenue: 'Weekly Revenue',
@@ -93,7 +94,7 @@ export async function syncKnackToScorecard(weekCount = 13): Promise<{
 }
 
 /**
- * Ensure the 4 Knack-sourced metrics exist in the scorecard.
+ * Ensure the 5 Knack-sourced metrics exist in the scorecard.
  * Returns a map of KPI key → metric UUID.
  */
 async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
@@ -102,6 +103,7 @@ async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
 
   const kpiConfigs: Record<KPIKey, { goal: string; comparator: 'gte' | 'lte'; unit: string }> = {
     parentJobsShipped: { goal: '10', comparator: 'gte', unit: 'jobs' },
+    parentJobsInvoiced: { goal: '10', comparator: 'gte', unit: 'jobs' },
     avgDaysOrderToShip: { goal: '14', comparator: 'lte', unit: 'days' },
     onTimeDeliveryPct: { goal: '90', comparator: 'gte', unit: '%' },
     weeklyRevenue: { goal: '50000', comparator: 'gte', unit: '$' },
