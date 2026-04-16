@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useOptimistic, useTransition } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Target, ChevronDown, Plus } from 'lucide-react';
+import { Target, ChevronDown, Plus, Inbox } from 'lucide-react';
+import { toast } from 'sonner';
+import { EmptyState } from '@/components/empty-state';
 import { updateRockStatus } from '@/server/rocks';
 import { NewRockDialog } from './new-rock-dialog';
 
@@ -95,24 +97,30 @@ function RockCard({ rock }: { rock: Rock }) {
 }
 
 function StatusDropdown({ rockId, current }: { rockId: string; current: string }) {
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(current);
+  const [, startTransition] = useTransition();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-accent"
         onClick={(e) => e.preventDefault()}
       >
-        <Badge variant={STATUS_CONFIG[current as keyof typeof STATUS_CONFIG].badgeVariant}>
-          {STATUS_CONFIG[current as keyof typeof STATUS_CONFIG].label}
+        <Badge variant={STATUS_CONFIG[optimisticStatus as keyof typeof STATUS_CONFIG].badgeVariant}>
+          {STATUS_CONFIG[optimisticStatus as keyof typeof STATUS_CONFIG].label}
         </Badge>
         <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent onClick={(e) => e.preventDefault()}>
-        {COLUMNS.filter((s) => s !== current).map((s) => (
+        {COLUMNS.filter((s) => s !== optimisticStatus).map((s) => (
           <DropdownMenuItem
             key={s}
-            onClick={async (e) => {
+            onClick={(e) => {
               e.preventDefault();
-              await updateRockStatus(rockId, s);
+              startTransition(async () => {
+                setOptimisticStatus(s);
+                await updateRockStatus(rockId, s);
+                toast.success(`Rock marked ${STATUS_CONFIG[s].label.toLowerCase()}`);
+              });
             }}
           >
             <div className={`h-2 w-2 rounded-full ${STATUS_CONFIG[s].color} mr-2`} />
@@ -156,9 +164,11 @@ export function RocksBoard({
                 <span className="text-xs text-muted-foreground">({items.length})</span>
               </div>
               {items.length === 0 && (
-                <p className="text-xs text-muted-foreground py-8 text-center">
-                  No rocks
-                </p>
+                <EmptyState
+                  icon={Inbox}
+                  title="No rocks"
+                  description="Add a rock to get started"
+                />
               )}
               {items.map((rock) => (
                 <RockCard key={rock.id} rock={rock} />

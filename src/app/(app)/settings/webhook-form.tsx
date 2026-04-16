@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { saveWebhookUrl, testWebhook } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,8 +21,10 @@ export function WebhookForm({ initialUrl }: { initialUrl: string | null }) {
     setSaving(false);
     if ('ok' in r) {
       setSuccess('Webhook URL saved.');
+      toast.success('Webhook URL saved');
     } else {
       setError(r.error ?? 'Something went wrong');
+      toast.error(r.error ?? 'Something went wrong');
     }
   }
 
@@ -33,8 +36,10 @@ export function WebhookForm({ initialUrl }: { initialUrl: string | null }) {
     setTesting(false);
     if ('ok' in r) {
       setSuccess('Test message sent! Check your Teams channel.');
+      toast.success('Test message sent');
     } else {
       setError(r.error ?? 'Test failed');
+      toast.error(r.error ?? 'Test failed');
     }
   }
 

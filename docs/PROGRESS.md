@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-15**. 22 commits on `main`, 8 on `claude/sad-khorana` (Phases 3–8). Phases 9–11 on `claude/adoring-benz`.
+Last session: **2026-04-16**. Phases 9–12 on `claude/adoring-benz`. All 12 phases complete (email digest skipped).
 
 ## Where things live
 
@@ -82,13 +82,19 @@ Server actions in `src/server/meetings.ts`: `startMeeting` (no concurrent guard)
 ### Phase 10 — Dashboard ✅
 Replaced placeholder with real dashboard at `/`. Three above-fold cards: **Scorecard** (current week, red/green coloring, metric values + units), **My Rocks** (current quarter, progress %, status badge with link to detail), **My To-Dos** (sorted by due date, overdue highlighted red, capped at 8 with "+N more"). Below: **Recent Meetings** table (last 5, date linked to history detail, type, rating, completed/in-progress badge). All cards link to their respective full pages. Server-side data fetching via `Promise.all` for parallel loading.
 
-## Not yet started
-
 ### Phase 11 — E2E Smoke Test ✅ (deploy deferred)
 Playwright config + Chromium. Happy-path test: admin API creates temp test user → password login via UI → navigates all 7 pages (dashboard, rocks, todos, scorecard, issues, meeting live, meeting history, settings). Cleanup deletes test user in `afterAll`. `reuseExistingServer: true` for dev. 1 test, passes in ~8s. **Deploy** (Task 11.2) deferred — user must add env vars to Vercel + Supabase redirect allowlist.
 
-### Phase 12 — Polish backlog
-Loading skeletons, optimistic UI on toggles, toast (via sonner) on action success/failure, keyboard shortcuts in meeting runner, email digest Mondays, empty states, dark mode.
+### Phase 12 — Polish ✅
+- **Sign-out button** in sidebar (was deferred item, now resolved)
+- **Loading skeletons** for dashboard, rocks, todos, issues, scorecard (Next.js `loading.tsx` convention)
+- **Optimistic UI** on todo toggle + rock status change via React 19 `useOptimistic`
+- **Toast notifications** via sonner on todo add/carry/drop, rock status, password update, webhook save/test
+- **Keyboard shortcuts** in meeting runner: 1–7 jump to section, ←→ prev/next, hint text in sidebar rail
+- **Empty states** with icons on rocks board columns, todos list, issues board
+- **Dark mode** toggle via `next-themes` ThemeProvider + sidebar toggle button
+- **Metadata** title fixed from "Create Next App" → "Colorhub EOS Hub"
+- **Skipped:** 12.5 email digest (needs Resend setup)
 
 ## Deferred items tracked (will bite if forgotten)
 
@@ -97,7 +103,7 @@ Loading skeletons, optimistic UI on toggles, toast (via sonner) on action succes
 - **No RLS policies** on any table. Trust-based permissions work while the whole team is three people. Revisit before any multi-tenant or before exposing the Supabase anon key to untrusted clients.
 - **No performance indexes.** Flagged targets: `rocks.quarter`, `rock_activity(rock_id, created_at)`, `todos(status, owner_id)`, `scorecard_entries(metric_id, week_start)` (already covered by the unique). Fine at zero scale.
 - **`meetings.attendees` is jsonb.** Works but forfeits FK integrity. If this grows important, swap to a `meeting_attendees` join table.
-- **No sign-out button in sidebar.** Users have to clear cookies to sign out. Easy add in a future session.
+- ~~**No sign-out button in sidebar.**~~ Resolved in Phase 12.
 - **Password min length mismatch:** server enforces 8, Supabase default is 6. Align via Supabase Auth settings or just keep 8 as the product floor.
 - **4 moderate npm audit vulns** in dev deps (never addressed).
 - **Open-redirect shape** in `/auth/callback`: always goes to `${origin}/`. If a `next`/`redirectTo` param is added later, validate that it's a relative path.

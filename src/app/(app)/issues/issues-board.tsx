@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, CheckCircle, Trash2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Plus, CheckCircle, Trash2, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
 import {
   createIssue,
   solveIssue,
@@ -140,7 +141,7 @@ export function IssuesBoard({
         <h2 className="font-semibold">Short-Term</h2>
         <AddIssueForm list="short_term" members={members} />
         {shortTerm.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4 text-center">No open issues.</p>
+          <EmptyState icon={AlertCircle} title="No open issues" />
         )}
         {shortTerm.map((issue) => (
           <IssueRow key={issue.id} issue={issue} />
@@ -151,7 +152,7 @@ export function IssuesBoard({
         <h2 className="font-semibold">Long-Term</h2>
         <AddIssueForm list="long_term" members={members} />
         {longTerm.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4 text-center">No open issues.</p>
+          <EmptyState icon={AlertCircle} title="No open issues" />
         )}
         {longTerm.map((issue) => (
           <IssueRow key={issue.id} issue={issue} />

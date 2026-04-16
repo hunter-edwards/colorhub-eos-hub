@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Timer } from './timer';
 import { SeguePanel } from './panels/segue';
@@ -33,6 +33,42 @@ export function Agenda({
   const [active, setActive] = useState<SectionKey>('segue');
   const section = SECTIONS.find((s) => s.key === active)!;
 
+  const activeIdx = SECTIONS.findIndex((s) => s.key === active);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Skip if user is typing in an input/textarea
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // 1-7: jump to section
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= 7) {
+        setActive(SECTIONS[num - 1].key);
+        return;
+      }
+
+      // ArrowRight / Space: next section
+      if ((e.key === 'ArrowRight' || e.key === ' ') && activeIdx < SECTIONS.length - 1) {
+        e.preventDefault();
+        setActive(SECTIONS[activeIdx + 1].key);
+        return;
+      }
+
+      // ArrowLeft: previous section
+      if (e.key === 'ArrowLeft' && activeIdx > 0) {
+        e.preventDefault();
+        setActive(SECTIONS[activeIdx - 1].key);
+      }
+    },
+    [activeIdx]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   return (
     <div className="flex gap-6 h-[calc(100vh-6rem)]">
       {/* Left rail */}
@@ -51,10 +87,13 @@ export function Agenda({
                 : 'hover:bg-accent'
             )}
           >
-            <span className="text-xs opacity-60">{i + 1}</span>
+            <kbd className="text-[10px] opacity-50 font-mono w-3">{i + 1}</kbd>
             {s.label}
           </button>
         ))}
+        <p className="text-[10px] text-muted-foreground px-3 pt-3">
+          Keys: 1-7 jump · ←→ prev/next
+        </p>
       </div>
 
       {/* Main panel */}
