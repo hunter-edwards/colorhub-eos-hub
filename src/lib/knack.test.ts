@@ -23,39 +23,49 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
 describe('computeWeeklyKPIs', () => {
   const weeks = ['2026-04-13']; // Monday Apr 13
 
-  it('counts parent job as shipped when all runs shipped + invoiced', () => {
+  it('counts parent job as shipped when all runs have shipped=true', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
-      makeRun({ id: 'r2', partNumber: '2', shipped: true, invoiced: true }),
+      makeRun({ id: 'r1', partNumber: '1', shipped: true }),
+      makeRun({ id: 'r2', partNumber: '2', shipped: true }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(1);
   });
 
-  it('does NOT count parent job when one run is not invoiced', () => {
+  it('does NOT count shipped when one run not shipped', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
-      makeRun({ id: 'r2', partNumber: '2', shipped: true, invoiced: false }),
+      makeRun({ id: 'r1', partNumber: '1', shipped: true }),
+      makeRun({ id: 'r2', partNumber: '2', shipped: false }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(0);
   });
 
-  it('does NOT count parent job when one run is not shipped', () => {
+  it('counts parent job as invoiced when all runs have invoiced=true', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
-      makeRun({ id: 'r2', partNumber: '2', shipped: false, invoiced: true }),
+      makeRun({ id: 'r1', partNumber: '1', invoiced: true }),
+      makeRun({ id: 'r2', partNumber: '2', invoiced: true }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
-    expect(result[0].parentJobsShipped).toBe(0);
+    expect(result[0].parentJobsInvoiced).toBe(1);
   });
 
-  it('counts late jobs as shipped (regardless of on-time)', () => {
+  it('does NOT count invoiced when one run not invoiced', () => {
     const runs = [
-      makeRun({ shipped: true, invoiced: true, shipDate: '2026-04-15', dueDate: '2026-04-10' }),
+      makeRun({ id: 'r1', partNumber: '1', invoiced: true }),
+      makeRun({ id: 'r2', partNumber: '2', invoiced: false }),
+    ];
+    const result = computeWeeklyKPIs(runs, weeks);
+    expect(result[0].parentJobsInvoiced).toBe(0);
+  });
+
+  it('shipped and invoiced are independent — job can be shipped but not invoiced', () => {
+    const runs = [
+      makeRun({ shipped: true, invoiced: false }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(1);
+    expect(result[0].parentJobsInvoiced).toBe(0);
   });
 
   it('calculates avg days order to ship', () => {

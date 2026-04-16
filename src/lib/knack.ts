@@ -139,6 +139,7 @@ function toKnackDate(iso: string): string {
 export type WeeklyKPIs = {
   weekStart: string;  // ISO date (Monday)
   parentJobsShipped: number;
+  parentJobsInvoiced: number;
   avgDaysOrderToShip: number | null;
   onTimeDeliveryPct: number | null;
   weeklyRevenue: number;
@@ -157,7 +158,8 @@ export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): Weekl
 
     return {
       weekStart,
-      parentJobsShipped: countParentJobsShipped(weekRuns, runs),
+      parentJobsShipped: countParentJobsByFlag(weekRuns, runs, 'shipped'),
+      parentJobsInvoiced: countParentJobsByFlag(weekRuns, runs, 'invoiced'),
       avgDaysOrderToShip: avgDaysOrderToShip(weekRuns),
       onTimeDeliveryPct: onTimeDeliveryPct(weekRuns),
       weeklyRevenue: weekRuns.reduce((sum, r) => sum + r.revenue, 0),
@@ -166,18 +168,19 @@ export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): Weekl
 }
 
 /**
- * Parent jobs shipped in a given week.
+ * Count parent jobs where ALL runs have a given flag set.
  *
- * A parent job is "shipped" when ALL its runs have been marked as shipped
- * (field_34=Yes) AND passed to invoicing (field_798=Yes).
+ * "shipped": all runs have field_34=Yes (production KPI)
+ * "invoiced": all runs have field_798=Yes (financial KPI)
  *
- * The parent job's ship week = week containing the MAX ship date across
- * all its runs (the week the last run was shipped/invoiced).
- *
- * `allRuns` is the full dataset so we can check cross-run completeness.
+ * The parent job's week = week containing the MAX ship date across all
+ * its runs (the week the last run was shipped).
  */
-function countParentJobsShipped(weekRuns: KnackRun[], allRuns: KnackRun[]): number {
-  // Identify unique parent jobs that had runs ship this week
+function countParentJobsByFlag(
+  weekRuns: KnackRun[],
+  allRuns: KnackRun[],
+  flag: 'shipped' | 'invoiced'
+): number {
   const parentJobsThisWeek = new Set(
     weekRuns
       .filter((r) => r.parentJob)
@@ -188,23 +191,19 @@ function countParentJobsShipped(weekRuns: KnackRun[], allRuns: KnackRun[]): numb
 
   for (const pjKey of parentJobsThisWeek) {
     const [customer, parentJob] = pjKey.split('_');
-    // Get ALL runs for this parent job (across all weeks)
     const allJobRuns = allRuns.filter(
       (r) => r.customer === customer && r.parentJob === parentJob
     );
 
-    // All runs must be shipped AND invoiced
-    const allComplete = allJobRuns.every((r) => r.shipped && r.invoiced);
-    if (!allComplete) continue;
+    const allFlagged = allJobRuns.every((r) => r[flag]);
+    if (!allFlagged) continue;
 
-    // The parent job's completion date = latest ship date across all runs
     const completionDate = allJobRuns.reduce(
       (max, r) => (r.shipDate && r.shipDate > max ? r.shipDate : max),
       ''
     );
     if (!completionDate) continue;
 
-    // Only count if the completion date falls in the current week
     if (weekRuns.some((r) => r.shipDate && getWeekStartForDate(r.shipDate) === getWeekStartForDate(completionDate))) {
       count++;
     }
