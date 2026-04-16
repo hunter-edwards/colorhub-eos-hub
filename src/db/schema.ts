@@ -136,3 +136,8 @@ export const meetingRatings = pgTable('meeting_ratings', {
 }, (t) => ({
   meetingUserUnique: unique('meeting_ratings_meeting_user_unique').on(t.meetingId, t.userId),
 }));
+
+export const teamSettings = pgTable('team_settings', {
+  teamId: uuid('team_id').references(() => teams.id).primaryKey(),
+  teamsWebhookUrl: text('teams_webhook_url'),
+});

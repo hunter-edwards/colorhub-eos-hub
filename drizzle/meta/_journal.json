@@ -36,6 +36,13 @@
       "when": 1776288388226,
       "tag": "0004_heavy_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776311752524,
+      "tag": "0005_black_glorian",
+      "breakpoints": true
     }
   ]
 }

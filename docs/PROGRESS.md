@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-15**. 22 commits on `main`, 8 on `claude/sad-khorana` (Phases 3–8).
+Last session: **2026-04-15**. 22 commits on `main`, 8 on `claude/sad-khorana` (Phases 3–8). Phases 9–11 on `claude/adoring-benz`.
 
 ## Where things live
 
@@ -76,16 +76,16 @@ Server actions in `src/server/meetings.ts`: `startMeeting` (no concurrent guard)
 ### Phase 8 — AI Summary ✅
 `collectMeetingContext` gathers ratings, headlines, rock changes, scorecard reds, meeting to-dos from DB. `generateSummary` calls `claude-sonnet-4-6` with prompt caching (`cache_control: ephemeral` on stable context). `endMeeting` auto-generates summary (graceful failure — meeting still ends if API call fails). Meeting history list at `/meeting/history`. Detail page at `/meeting/history/[id]` with markdown rendering (react-markdown) + collapsible raw data + "Retry Summary" button.
 
+### Phase 9 — Teams Webhook ✅
+`team_settings` table (PK on `team_id`, FK to `teams`). `buildAdaptiveCard` produces MS Teams Adaptive Card v1.4 with meeting date, rating, attendees, and summary. `postToTeams` POSTs card to webhook URL, returns `{ ok, postedAt }` or `{ ok: false, error }`. 8 unit tests (card structure, fetch mock success/failure). Settings page at `/settings` extended with Teams Integration card — paste webhook URL, save, send test post. `endMeeting` wires it all: after AI summary persists, reads `teamSettings`, posts if URL configured, stamps `meetings.teamsPostedAt`. Graceful failure — meeting still ends if webhook fails.
+
+### Phase 10 — Dashboard ✅
+Replaced placeholder with real dashboard at `/`. Three above-fold cards: **Scorecard** (current week, red/green coloring, metric values + units), **My Rocks** (current quarter, progress %, status badge with link to detail), **My To-Dos** (sorted by due date, overdue highlighted red, capped at 8 with "+N more"). Below: **Recent Meetings** table (last 5, date linked to history detail, type, rating, completed/in-progress badge). All cards link to their respective full pages. Server-side data fetching via `Promise.all` for parallel loading.
+
 ## Not yet started
 
-### Phase 9 — Teams webhook
-Add `team_settings` table with `teamsWebhookUrl`. Adaptive card POST after summary completes. Settings page grows to include webhook config.
-
-### Phase 10 — Dashboard
-Replace placeholder with real cards: this week's scorecard (compact), my open rocks, my open to-dos, recent meetings.
-
-### Phase 11 — E2E smoke test + deploy
-Playwright happy path. Vercel deploy. User must add env vars to Vercel + add prod URL to Supabase redirect allowlist.
+### Phase 11 — E2E Smoke Test ✅ (deploy deferred)
+Playwright config + Chromium. Happy-path test: admin API creates temp test user → password login via UI → navigates all 7 pages (dashboard, rocks, todos, scorecard, issues, meeting live, meeting history, settings). Cleanup deletes test user in `afterAll`. `reuseExistingServer: true` for dev. 1 test, passes in ~8s. **Deploy** (Task 11.2) deferred — user must add env vars to Vercel + Supabase redirect allowlist.
 
 ### Phase 12 — Polish backlog
 Loading skeletons, optimistic UI on toggles, toast (via sonner) on action success/failure, keyboard shortcuts in meeting runner, email digest Mondays, empty states, dark mode.
