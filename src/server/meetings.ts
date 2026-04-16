@@ -1,11 +1,12 @@
 'use server';
 
 import { db } from '@/db';
-import { meetings, meetingRatings, headlines, users } from '@/db/schema';
+import { meetings, meetingRatings, headlines, users, teamSettings } from '@/db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
+import { postToTeams } from './teams-webhook';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -42,15 +43,37 @@ export async function endMeeting(meetingId: string) {
     .where(eq(meetings.id, meetingId));
 
   // Generate AI summary (non-blocking — meeting still ends if this fails)
+  let summary: string | null = null;
+  let ctx: Awaited<ReturnType<typeof collectMeetingContext>> | null = null;
   try {
-    const ctx = await collectMeetingContext(meetingId);
-    const summary = await generateSummary(ctx);
+    ctx = await collectMeetingContext(meetingId);
+    summary = await generateSummary(ctx);
     await db
       .update(meetings)
       .set({ aiSummaryMd: summary })
       .where(eq(meetings.id, meetingId));
   } catch (e) {
     console.error('AI summary generation failed:', e);
+  }
+
+  // Post to Teams webhook if configured
+  if (ctx && summary) {
+    try {
+      const [settings] = await db.select().from(teamSettings);
+      if (settings?.teamsWebhookUrl) {
+        const result = await postToTeams(ctx, summary, settings.teamsWebhookUrl);
+        if (result.ok) {
+          await db
+            .update(meetings)
+            .set({ teamsPostedAt: result.postedAt })
+            .where(eq(meetings.id, meetingId));
+        } else {
+          console.error('Teams webhook post failed:', result.error);
+        }
+      }
+    } catch (e) {
+      console.error('Teams webhook post failed:', e);
+    }
   }
 
   revalidatePath('/meeting/live');
