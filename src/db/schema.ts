@@ -13,6 +13,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   name: text('name'),
   avatarUrl: text('avatar_url'),
+  profileColor: text('profile_color'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -140,4 +141,82 @@ export const meetingRatings = pgTable('meeting_ratings', {
 export const teamSettings = pgTable('team_settings', {
   teamId: uuid('team_id').references(() => teams.id).primaryKey(),
   teamsWebhookUrl: text('teams_webhook_url'),
+});
+
+// --- Phase 13: User Profiles (profileColor added to users) ---
+
+// Phase 14: Core Values
+export const coreValues = pgTable('core_values', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id).notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  orderIdx: integer('order_idx').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+// Phase 15: V/TO
+export const vto = pgTable('vto', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id).notNull().unique(),
+  coreFocusPurpose: text('core_focus_purpose'),
+  coreFocusNiche: text('core_focus_niche'),
+  tenYearTarget: text('ten_year_target'),
+  marketingStrategyTargetMarket: text('marketing_strategy_target_market'),
+  marketingStrategyUniques: jsonb('marketing_strategy_uniques').$type<string[]>(),
+  marketingStrategyProvenProcess: text('marketing_strategy_proven_process'),
+  marketingStrategyGuarantee: text('marketing_strategy_guarantee'),
+  threeYearPictureDate: date('three_year_picture_date'),
+  threeYearPictureRevenue: text('three_year_picture_revenue'),
+  threeYearPictureProfit: text('three_year_picture_profit'),
+  threeYearPictureMeasurables: jsonb('three_year_picture_measurables').$type<string[]>(),
+  oneYearPlanDate: date('one_year_plan_date'),
+  oneYearPlanRevenue: text('one_year_plan_revenue'),
+  oneYearPlanProfit: text('one_year_plan_profit'),
+  oneYearPlanGoals: jsonb('one_year_plan_goals').$type<string[]>(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+// Phase 16: Accountability Chart
+export const seats = pgTable('seats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id).notNull(),
+  title: text('title').notNull(),
+  roles: jsonb('roles').$type<string[]>().notNull().default([]),
+  parentSeatId: uuid('parent_seat_id'),
+  personId: uuid('person_id').references(() => users.id),
+  gwcGetsIt: boolean('gwc_gets_it'),
+  gwcWantsIt: boolean('gwc_wants_it'),
+  gwcCapacity: boolean('gwc_capacity'),
+  orderIdx: integer('order_idx').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+// Phase 17: People Analyzer
+export const peopleRatingValue = pgEnum('people_rating_value', ['plus', 'plus_minus', 'minus']);
+
+export const peopleRatings = pgTable('people_ratings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id).notNull(),
+  subjectId: uuid('subject_id').references(() => users.id).notNull(),
+  coreValueId: uuid('core_value_id').references(() => coreValues.id),
+  gwcField: text('gwc_field'),
+  rating: peopleRatingValue('rating').notNull(),
+  quarter: text('quarter').notNull(),
+}, (t) => ({
+  subjectValueQuarterUnique: unique('people_ratings_subject_value_quarter_unique')
+    .on(t.subjectId, t.coreValueId, t.gwcField, t.quarter),
+}));
+
+// Phase 18: Process Documentation
+export const processes = pgTable('processes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id).notNull(),
+  title: text('title').notNull(),
+  ownerId: uuid('owner_id').references(() => users.id),
+  steps: jsonb('steps').$type<string[]>().notNull().default([]),
+  description: text('description'),
+  orderIdx: integer('order_idx').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 });

@@ -2,12 +2,16 @@ import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PasswordForm } from './password-form';
 import { WebhookForm } from './webhook-form';
-import { getWebhookUrl } from './actions';
+import { ProfileForm } from './profile-form';
+import { getWebhookUrl, getProfile } from './actions';
 
 export default async function SettingsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const webhookUrl = await getWebhookUrl();
+  const [webhookUrl, profile] = await Promise.all([
+    getWebhookUrl(),
+    getProfile(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -17,6 +21,18 @@ export default async function SettingsPage() {
           Account and team settings.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+          <CardDescription>
+            Your display name, avatar, and profile color.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProfileForm initial={profile} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
