@@ -11,6 +11,7 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
     orderedQty: 100,
     shippedQty: 100,
     shipped: true,
+    invoiced: true,
     shipDate: '2026-04-13',
     orderDate: '2026-04-01',
     dueDate: '2026-04-15',
@@ -22,31 +23,38 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
 describe('computeWeeklyKPIs', () => {
   const weeks = ['2026-04-13']; // Monday Apr 13
 
-  it('counts parent job as shipped when all parts fulfilled', () => {
+  it('counts parent job as shipped when all runs shipped + invoiced', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', orderedQty: 100, shippedQty: 120 }),
-      makeRun({ id: 'r2', partNumber: '2', orderedQty: 50, shippedQty: 55 }),
+      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
+      makeRun({ id: 'r2', partNumber: '2', shipped: true, invoiced: true }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(1);
   });
 
-  it('does NOT count parent job when one part is short', () => {
+  it('does NOT count parent job when one run is not invoiced', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', orderedQty: 100, shippedQty: 120 }),
-      makeRun({ id: 'r2', partNumber: '2', orderedQty: 50, shippedQty: 30 }),
+      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
+      makeRun({ id: 'r2', partNumber: '2', shipped: true, invoiced: false }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(0);
   });
 
-  it('sums shipped qty across multiple runs for same part', () => {
+  it('does NOT count parent job when one run is not shipped', () => {
     const runs = [
-      makeRun({ id: 'r1', partNumber: '1', orderedQty: 100, shippedQty: 60 }),
-      makeRun({ id: 'r2', partNumber: '1', orderedQty: 100, shippedQty: 50, jobId: '036_19000_1' }),
+      makeRun({ id: 'r1', partNumber: '1', shipped: true, invoiced: true }),
+      makeRun({ id: 'r2', partNumber: '2', shipped: false, invoiced: true }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
-    // 60 + 50 = 110 >= 100 → shipped
+    expect(result[0].parentJobsShipped).toBe(0);
+  });
+
+  it('counts late jobs as shipped (regardless of on-time)', () => {
+    const runs = [
+      makeRun({ shipped: true, invoiced: true, shipDate: '2026-04-15', dueDate: '2026-04-10' }),
+    ];
+    const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(1);
   });
 
@@ -93,8 +101,8 @@ describe('computeWeeklyKPIs', () => {
 
   it('counts multiple parent jobs separately', () => {
     const runs = [
-      makeRun({ parentJob: '19000', customer: '036', orderedQty: 100, shippedQty: 100 }),
-      makeRun({ id: 'r2', parentJob: '19001', customer: '036', orderedQty: 50, shippedQty: 60, jobId: '036_19001_1' }),
+      makeRun({ parentJob: '19000', customer: '036' }),
+      makeRun({ id: 'r2', parentJob: '19001', customer: '036', jobId: '036_19001_1' }),
     ];
     const result = computeWeeklyKPIs(runs, weeks);
     expect(result[0].parentJobsShipped).toBe(2);

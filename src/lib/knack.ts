@@ -9,6 +9,7 @@
  *   field_8     ordered qty
  *   field_561   shipped qty (total pieces shipped)
  *   field_34    shipped flag        "Yes" / "No"
+ *   field_798   invoiced flag       "Yes" / "No"
  *   field_497   ship date           e.g. "03/06/2026"
  *   field_969   order received date e.g. "01/28/2026"
  *   field_972   due/promise date    e.g. "03/04/2026"
@@ -31,6 +32,7 @@ export type KnackRun = {
   orderedQty: number;  // field_8
   shippedQty: number;  // field_561
   shipped: boolean;    // field_34
+  invoiced: boolean;   // field_798
   shipDate: string | null;    // field_497 → ISO date
   orderDate: string | null;   // field_969 → ISO date
   dueDate: string | null;     // field_972 → ISO date
@@ -80,6 +82,7 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     orderedQty: Number(rec.field_8) || 0,
     shippedQty: Number(rec.field_561) || 0,
     shipped: rec.field_34 === 'Yes',
+    invoiced: rec.field_798 === 'Yes',
     shipDate: parseKnackDate(rec.field_497 as string),
     orderDate: parseKnackDate(rec.field_969 as string),
     dueDate: parseKnackDate(rec.field_972 as string),
@@ -165,14 +168,16 @@ export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): Weekl
 /**
  * Parent jobs shipped in a given week.
  *
- * A parent job is "shipped" when ALL its parts have shipped qty >= ordered qty.
- * The parent job's ship week = week containing the MAX ship date across its parts
- * (i.e., the week the LAST part completed).
+ * A parent job is "shipped" when ALL its runs have been marked as shipped
+ * (field_34=Yes) AND passed to invoicing (field_798=Yes).
  *
- * `allRuns` is the full dataset so we can check cross-part completeness.
+ * The parent job's ship week = week containing the MAX ship date across
+ * all its runs (the week the last run was shipped/invoiced).
+ *
+ * `allRuns` is the full dataset so we can check cross-run completeness.
  */
 function countParentJobsShipped(weekRuns: KnackRun[], allRuns: KnackRun[]): number {
-  // Identify unique parent jobs that had parts ship this week
+  // Identify unique parent jobs that had runs ship this week
   const parentJobsThisWeek = new Set(
     weekRuns
       .filter((r) => r.parentJob)
@@ -184,38 +189,22 @@ function countParentJobsShipped(weekRuns: KnackRun[], allRuns: KnackRun[]): numb
   for (const pjKey of parentJobsThisWeek) {
     const [customer, parentJob] = pjKey.split('_');
     // Get ALL runs for this parent job (across all weeks)
-    const allPartsRuns = allRuns.filter(
+    const allJobRuns = allRuns.filter(
       (r) => r.customer === customer && r.parentJob === parentJob
     );
 
-    // Group by part number, sum shipped qty and get max ordered qty per part
-    const partMap = new Map<string, { shippedQty: number; orderedQty: number; maxShipDate: string }>();
-    for (const r of allPartsRuns) {
-      const key = r.partNumber || '0';
-      const existing = partMap.get(key) || { shippedQty: 0, orderedQty: 0, maxShipDate: '' };
-      existing.shippedQty += r.shippedQty;
-      existing.orderedQty = Math.max(existing.orderedQty, r.orderedQty);
-      if (r.shipDate && r.shipDate > existing.maxShipDate) {
-        existing.maxShipDate = r.shipDate;
-      }
-      partMap.set(key, existing);
-    }
+    // All runs must be shipped AND invoiced
+    const allComplete = allJobRuns.every((r) => r.shipped && r.invoiced);
+    if (!allComplete) continue;
 
-    // Check if ALL parts are fulfilled
-    const allFulfilled = [...partMap.values()].every(
-      (p) => p.orderedQty > 0 && p.shippedQty >= p.orderedQty
-    );
-    if (!allFulfilled) continue;
-
-    // The parent job's completion date = latest ship date across all parts
-    const completionDate = [...partMap.values()].reduce(
-      (max, p) => (p.maxShipDate > max ? p.maxShipDate : max),
+    // The parent job's completion date = latest ship date across all runs
+    const completionDate = allJobRuns.reduce(
+      (max, r) => (r.shipDate && r.shipDate > max ? r.shipDate : max),
       ''
     );
+    if (!completionDate) continue;
 
     // Only count if the completion date falls in the current week
-    const weekStart = weekRuns[0]?.shipDate ? getWeekStartForDate(completionDate) : '';
-    // Simpler: check if completionDate is within the week range of weekRuns
     if (weekRuns.some((r) => r.shipDate && getWeekStartForDate(r.shipDate) === getWeekStartForDate(completionDate))) {
       count++;
     }
