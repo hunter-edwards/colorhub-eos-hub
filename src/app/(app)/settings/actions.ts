@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { teamSettings, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { postToTeams } from '@/server/teams-webhook';
+import { revalidatePath } from 'next/cache';
 
 export async function updatePassword(formData: FormData) {
   const password = formData.get('password') as string | null;
@@ -82,4 +83,45 @@ export async function testWebhook() {
 
   if (result.ok) return { ok: true as const };
   return { error: result.error };
+}
+
+// --- Profile actions ---
+
+async function requireUserId() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  return user.id;
+}
+
+export async function getProfile() {
+  const userId = await requireUserId();
+  const [row] = await db
+    .select({
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      profileColor: users.profileColor,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  return row ?? { name: null, avatarUrl: null, profileColor: null };
+}
+
+export async function updateProfile(formData: FormData) {
+  const userId = await requireUserId();
+  const name = (formData.get('name') as string | null)?.trim() || null;
+  const avatarUrl = (formData.get('avatarUrl') as string | null)?.trim() || null;
+  const profileColor = (formData.get('profileColor') as string | null)?.trim() || null;
+
+  if (avatarUrl && !avatarUrl.startsWith('https://')) {
+    return { error: 'Avatar URL must start with https://' };
+  }
+
+  await db
+    .update(users)
+    .set({ name, avatarUrl, profileColor })
+    .where(eq(users.id, userId));
+
+  revalidatePath('/settings');
+  return { ok: true as const };
 }
