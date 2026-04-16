@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-15**. 22 commits on `main`.
+Last session: **2026-04-15**. 22 commits on `main`, 8 on `claude/sad-khorana` (Phases 3–8).
 
 ## Where things live
 
@@ -20,6 +20,9 @@ Next.js 16.2.3 (App Router, Turbopack default) + React 19 + TypeScript + Tailwin
 - `middleware.ts` filename is deprecated in Next 16 in favor of `proxy.ts` (warning only for now; migrate before Next 17).
 - Turbopack is default; `turbopack.root` pinned in `next.config.ts` to silence multi-lockfile warning from `~/package-lock.json` up the tree.
 - Tailwind v4, lucide-react v1, zod v4 — all new majors (work fine, just newer APIs).
+- **`params` is a Promise in Next 16** — dynamic route pages must `await params` (e.g. `const { id } = await params`).
+- **shadcn/ui uses Base UI** (not Radix) — `asChild` doesn't exist, use `render` prop instead. Base UI Tabs require explicit `value` on `TabsTrigger` and `TabsContent`.
+- **`'use server'` file-level marks ALL exports as server functions** — sync utility functions (like `currentQuarter`, `evaluateEntry`, `getWeekStarts`) must live in separate files (`src/lib/`) to avoid "Server Actions must be async" build errors. Server action files: `src/server/*.ts`. Utility files: `src/lib/*.ts`.
 
 ## Phases shipped
 
@@ -46,25 +49,34 @@ Supabase SSR clients (server/client/middleware). `/login` route with magic link.
 ### Phase 2.5 — Password auth (not in original plan) ✅
 Tabbed `/login`: Magic link | Password. `/settings` page with "Change password" form. Server-side validation (min 8 chars, confirm-match, generic "invalid credentials" message). Magic link remains the onboarding path — users set a password after logging in via magic link.
 
+### Phase 3 — Rocks ✅
+`currentQuarter` helper (TDD, 7 tests) in `src/lib/quarters.ts`. Server actions in `src/server/rocks.ts`: `createRock`, `listRocks`, `updateRockStatus`, `updateRockProgress`, `getRock`, `listSubtasks`, `addSubtask`, `toggleSubtask`, `deleteSubtask`, `listActivity`, `addComment`, `listTeamMembers`. Each mutation writes to `rock_activity`. Progress auto-recalculates from subtask completion. Rocks board page at `/rocks` (3-column: On Track / Off Track / Done). Rock detail page at `/rocks/[id]` with subtask list, activity timeline, comments with @mention highlighting. "X days left" with red urgency on due dates.
+
+### Phase 4 — To-Dos ✅
+Server actions in `src/server/todos.ts`: `createTodo` (default due +7 days), `listOpenTodos`, `listMyTodos`, `toggleTodo`, `dropTodo` (deletes row), `carryOverTodo` (+7 days). Page at `/todos` with Base UI Tabs (My To-Dos / All Team), sorted by due date, overdue highlighting, inline add with owner select.
+
+### Phase 5 — Issues ✅
+Server actions in `src/server/issues.ts`: `createIssue`, `listIssues(list)`, `solveIssue`, `dropIssue`, `moveList`. Page at `/issues` with two-column layout (Short-Term / Long-Term), inline add, hover actions to solve/drop/move.
+
+### Phase 6 — Scorecard ✅
+`evaluateEntry` (4 comparators: gte/lte/eq/range, 10 tests) + `getWeekStarts` in `src/lib/scorecard-utils.ts`. Server actions in `src/server/scorecard.ts`: `createMetric`, `listMetrics`, `listEntries`, `setEntry` (upsert on unique constraint). Page at `/scorecard` with 13-week grid, inline-editable cells, red/green cell backgrounds, add metric dialog.
+
+### Phase 7 — L10 Meeting Runner ✅
+Server actions in `src/server/meetings.ts`: `startMeeting` (no concurrent guard), `endMeeting` (computes rating avg + triggers AI summary), `joinMeeting`, `rateMeeting`, `addHeadline`, `listHeadlines`, `listMeetings`, `getMeeting`, `getMeetingRatings`. Live page at `/meeting/live` with 7-section agenda rail + per-section countdown timer. All panels implemented:
+- Segue: ephemeral good-news inputs
+- Scorecard: current week values, red→issue button
+- Rock Review: status toggles, off-track auto-creates issue
+- Headlines: customer/employee columns, persistent
+- To-Do Review: due/overdue split, toggle/carry/drop
+- IDS: issue list + discussion pane + solve with to-do creation
+- Conclude: cascading message textarea, 1-10 rating buttons, live average, "End & Summarize"
+
+**Deferred from Phase 7:** Realtime sync (7.7) needs Supabase dashboard config. IDS voting table (`issue_votes`) needs DB migration — IDS panel works without voting for now.
+
+### Phase 8 — AI Summary ✅
+`collectMeetingContext` gathers ratings, headlines, rock changes, scorecard reds, meeting to-dos from DB. `generateSummary` calls `claude-sonnet-4-6` with prompt caching (`cache_control: ephemeral` on stable context). `endMeeting` auto-generates summary (graceful failure — meeting still ends if API call fails). Meeting history list at `/meeting/history`. Detail page at `/meeting/history/[id]` with markdown rendering (react-markdown) + collapsible raw data + "Retry Summary" button.
+
 ## Not yet started
-
-### Phase 3 — Rocks (next)
-Server actions: `currentQuarter`, `createRock`, `listRocks(quarter)`, `updateRockStatus`, `updateRockProgress`, subtasks (add/toggle/delete), `addComment`. Rocks board page (cards grouped by status). Rock detail page (subtasks, activity log, comments, @mentions). Each mutation writes to `rock_activity`.
-
-### Phase 4 — To-Dos
-`createTodo` (default due +7 days), `listOpenTodos`, `listMyTodos`, `toggleTodo`, `dropTodo`, `carryOverTodo`. Tabs: My To-Dos / All Team. Inline add.
-
-### Phase 5 — Issues (+ IDS voting)
-`createIssue`, `listIssues(list)`, `solveIssue`, `dropIssue`, `moveList`. Two-column layout (short-term / long-term). Add `issue_votes` table in Phase 7.5 when IDS panel lands.
-
-### Phase 6 — Scorecard
-Metric definitions + weekly value upsert. Red/green evaluator (4 comparators: gte, lte, eq, range — test thoroughly). 13-week grid with inline-editable cells. **The unique constraint on `scorecard_entries(metric_id, week_start)` is what makes `setEntry` upserts work — already in place.**
-
-### Phase 7 — L10 meeting runner
-Live meeting page, 7 agenda sections, per-section timer, realtime sync via Supabase channel on: `rocks`, `todos`, `issues`, `issue_votes`, `headlines`, `meeting_ratings`, `scorecard_entries`. "End & Summarize" button → triggers Phase 8.
-
-### Phase 8 — AI summary
-`claude-sonnet-4-6`, structured-data only (no transcript), prompt caching on V/TO + rocks list. Markdown output. Writes to `meetings.ai_summary_md`.
 
 ### Phase 9 — Teams webhook
 Add `team_settings` table with `teamsWebhookUrl`. Adaptive card POST after summary completes. Settings page grows to include webhook config.
@@ -101,12 +113,20 @@ Loading skeletons, optimistic UI on toggles, toast (via sonner) on action succes
 
 Supabase project URL allowlist includes `http://localhost:3000/**`.
 
+## Branch info
+
+Phases 3–8 were built on branch `claude/sad-khorana` (worktree at `.claude/worktrees/sad-khorana`). Merge into `main` when ready:
+```bash
+git merge claude/sad-khorana
+```
+
 ## Known dev-environment gotchas
 
 - `~/Downloads/` is itself a git repo → multi-lockfile warning shows up unless `turbopack.root` is pinned (it is).
 - `create-next-app` did not auto-init git because of the parent Downloads git repo — had to `git init -b main` manually.
 - `shadcn add form` failed with the short name on shadcn 4.2.0; works with the full registry URL. Fall back to that pattern if other components fail similarly.
 - Node `--env-file=.env.local` is how the seed script loads env (not `dotenv` import — that fails because ESM imports hoist before `config()` runs).
+- **Worktrees don't get `.env.local`** (gitignored). Symlink it: `ln -s ../../.env.local .claude/worktrees/<name>/.env.local`.
 
 ## Resuming
 
@@ -114,4 +134,4 @@ To resume in a new session, open either:
 - This repo (`~/Downloads/colorhub-eos-hub/`) directly and reference `docs/PROGRESS.md` + the plan docs in the packagent repo.
 - The packagent worktree (where the plan lives) and work across both.
 
-Next practical step: **Phase 3 — Rocks**. Start with Task 3.1 (TDD `currentQuarter` helper) from the plan.
+Next practical step: **Phase 9 — Teams webhook**. Then Phase 10 (Dashboard), Phase 11 (E2E + deploy). Also need to merge `claude/sad-khorana` into `main` before or during next session.
