@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-16**. P1 (Phases 0–12), P2 (Phases 13–18), P3 (Phases 19–21) all complete. GitHub: `hunter-edwards/colorhub-eos-hub`. Deployed on Vercel.
+Last session: **2026-04-16**. P1 (Phases 0–12), P2 (Phases 13–18), P3 (Phases 19–21) all complete. Knack integration shipped. GitHub: `hunter-edwards/colorhub-eos-hub`. Deployed on Vercel.
 
 ## Where things live
 
@@ -151,6 +151,53 @@ dnd-kit integration on core values list and process steps. Drag handles (GripVer
 ### 21.3 — Export/print ✅
 Print buttons on V/TO and People Analyzer pages. CSS print stylesheet hides nav, buttons, backgrounds. Cards get borders, tables shrink for print.
 
+## Knack Integration ✅
+
+Knack production database connected to EOS scorecard. PR #12.
+
+### Knack API connection ✅
+`src/lib/knack.ts` — REST client using `X-Knack-Application-Id` + `X-Knack-REST-API-Key` headers. Paginated fetch from object_1 (runs). Env vars: `KNACK_APP_ID`, `KNACK_API_KEY` (must be added to Vercel dashboard — `.env.local` is gitignored).
+
+### Field mapping (object_1 = runs) ✅
+| Field | Name | Example |
+|-------|------|---------|
+| field_1700 | Full job ID | `177_18970_2` (customer_parentJob_part) |
+| field_534 | Parent job number | `18970` |
+| field_535 | Part number | `2` |
+| field_1589 | Customer number | `177` |
+| field_34 | Shipped flag | `Yes` / `No` |
+| field_798 | Invoiced (passToInvoicing) flag | `Yes` / `No` |
+| field_497 | Planned ship date | `03/06/2026` |
+| field_2292 | dateSentToInvoicing (actual) | `04/16/2026` — auto-set by Knack rule when field_798→Yes |
+| field_969 | Order received date | `01/28/2026` |
+| field_972 | Due/promise date | `03/04/2026` |
+| field_961 | Revenue | `$7,032.80` (~70% fill rate) |
+| field_8 | Ordered qty | |
+| field_561 | Shipped qty | |
+
+### 5 KPIs computed weekly ✅
+`src/server/knack-sync.ts` — `syncKnackToScorecard(weekCount=13)` fetches runs, computes KPIs, upserts into scorecard entries.
+
+1. **Parent Jobs Shipped** (production KPI) — parent job counts as shipped when ALL runs have `field_34 = "Yes"`. Goal: ≥ 10.
+2. **Parent Jobs Invoiced** (financial KPI) — parent job counts as invoiced when ALL runs have `field_798 = "Yes"`. Goal: ≥ 10.
+3. **Avg Days Order→Ship** (lead time) — `effectiveShipDate - orderDate`, averaged. Goal: ≤ 14 days.
+4. **On-Time Delivery %** (service) — `effectiveShipDate <= dueDate`. Goal: ≥ 90%.
+5. **Weekly Revenue** — sum of `field_961`. Goal: ≥ $50,000.
+
+**Effective ship date:** `field_2292 (dateSentToInvoicing) ?? field_497 (planned ship date)`. Historical records use planned date; new records use actual invoicing date once the Knack automation rule populates field_2292.
+
+### Individual KPI charts ✅
+`src/app/(app)/scorecard/kpi-charts.tsx` — each KPI gets its own card with bar or line chart, red dashed goal reference line, and footer showing Knack field numbers + formula. Rendered above the scorecard grid on `/scorecard`.
+
+### Metric management ✅
+Edit and delete scorecard metrics from the grid UI. Hover pencil/trash icons. Cascade deletes entries.
+
+### Sync button ✅
+`src/app/(app)/scorecard/knack-sync-button.tsx` — "Sync from Knack" button, conditionally shown when env vars configured.
+
+### Tests ✅
+13 unit tests in `src/lib/knack.test.ts` covering: shipped/invoiced independence, avg days, on-time %, revenue, empty runs, multiple parent jobs, dateSentToInvoicing preference, shipDate fallback.
+
 ## Deferred items tracked (will bite if forgotten)
 
 - **`NEXT_PUBLIC_SITE_URL`** — add before Vercel deploy (Task 11.2). The `signInWithMagicLink` server action currently falls back to `http://localhost:3000` if the `origin` header is missing. Fine in dev, wrong in prod.
@@ -172,6 +219,8 @@ Print buttons on V/TO and People Analyzer pages. CSS print stylesheet hides nav,
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `DATABASE_URL` — Transaction pooler, port 6543, with real password (NOT `[brackets]` placeholder — common gotcha)
 - `ANTHROPIC_API_KEY`
+- `KNACK_APP_ID` (optional — enables Knack sync)
+- `KNACK_API_KEY` (optional — enables Knack sync)
 
 Supabase project URL allowlist includes `http://localhost:3000/**`.
 
@@ -194,4 +243,4 @@ Open this repo (`~/Downloads/colorhub-eos-hub/`) and reference:
 - `docs/PLAN-P2.md` — P2 plan (Phases 13–18, complete)
 - `docs/PLAN-P3.md` — P3 plan (Phases 19–21, complete)
 
-All phases through P3 shipped. Remaining work: deploy to Vercel (env vars), RLS policies, Supabase Realtime, email digest.
+All phases through P3 shipped + Knack integration. Remaining work: add `KNACK_APP_ID` + `KNACK_API_KEY` to Vercel dashboard, RLS policies, Supabase Realtime, email digest, AR aging KPI (once field_2292 has enough data).
