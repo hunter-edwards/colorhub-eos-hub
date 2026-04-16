@@ -73,6 +73,17 @@ export async function updateRockProgress(rockId: string, progressPct: number) {
   revalidatePath(`/rocks/${rockId}`);
 }
 
+async function recalcProgress(rockId: string) {
+  const subtasks = await db
+    .select({ done: rockSubtasks.done })
+    .from(rockSubtasks)
+    .where(eq(rockSubtasks.rockId, rockId));
+  if (subtasks.length === 0) return;
+  const done = subtasks.filter((s) => s.done).length;
+  const pct = Math.round((done / subtasks.length) * 100);
+  await db.update(rocks).set({ progressPct: pct }).where(eq(rocks.id, rockId));
+}
+
 export async function listTeamMembers() {
   return db.select({ id: users.id, name: users.name, email: users.email }).from(users);
 }
@@ -119,7 +130,9 @@ export async function addSubtask(rockId: string, title: string) {
     kind: 'subtask',
     payload: { action: 'added', subtaskTitle: title },
   });
+  await recalcProgress(rockId);
   revalidatePath(`/rocks/${rockId}`);
+  revalidatePath('/rocks');
   return created;
 }
 
@@ -133,7 +146,9 @@ export async function toggleSubtask(subtaskId: string) {
     .update(rockSubtasks)
     .set({ done: !existing.done })
     .where(eq(rockSubtasks.id, subtaskId));
+  await recalcProgress(existing.rockId);
   revalidatePath(`/rocks/${existing.rockId}`);
+  revalidatePath('/rocks');
 }
 
 export async function deleteSubtask(subtaskId: string) {
@@ -143,7 +158,9 @@ export async function deleteSubtask(subtaskId: string) {
     .where(eq(rockSubtasks.id, subtaskId));
   if (!existing) return;
   await db.delete(rockSubtasks).where(eq(rockSubtasks.id, subtaskId));
+  await recalcProgress(existing.rockId);
   revalidatePath(`/rocks/${existing.rockId}`);
+  revalidatePath('/rocks');
 }
 
 export async function listActivity(rockId: string) {

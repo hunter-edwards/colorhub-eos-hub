@@ -6,6 +6,18 @@ import { getRock, listSubtasks, listActivity } from '@/server/rocks';
 import { Subtasks } from './subtasks';
 import { Activity } from './activity';
 
+function daysLeft(dueDate: string): { text: string; urgent: boolean } {
+  const due = new Date(dueDate + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return { text: `${Math.abs(diff)}d overdue`, urgent: true };
+  if (diff === 0) return { text: 'Due today', urgent: true };
+  if (diff === 1) return { text: '1 day left', urgent: true };
+  if (diff <= 7) return { text: `${diff} days left`, urgent: true };
+  return { text: `${diff} days left`, urgent: false };
+}
+
 const STATUS_BADGE = {
   on_track: { label: 'On Track', variant: 'default' as const },
   off_track: { label: 'Off Track', variant: 'destructive' as const },
@@ -48,7 +60,14 @@ export default async function RockDetailPage({
         <div className="flex gap-4 text-sm text-muted-foreground">
           <span>Owner: {rock.ownerName || rock.ownerEmail}</span>
           <span>Quarter: {rock.quarter}</span>
-          {rock.dueDate && <span>Due: {rock.dueDate}</span>}
+          {rock.dueDate && (() => {
+            const dl = daysLeft(rock.dueDate);
+            return (
+              <span className={dl.urgent ? 'text-red-600 font-medium' : ''}>
+                {dl.text}
+              </span>
+            );
+          })()}
         </div>
       </div>
 
