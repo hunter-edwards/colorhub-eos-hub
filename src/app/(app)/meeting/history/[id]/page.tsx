@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { getMeeting, getMeetingRatings, listHeadlines } from '@/server/meetings';
+import { UserAvatar } from '@/components/user-avatar';
 import { SummaryView } from './summary-view';
 
 export default async function MeetingDetailPage({
@@ -60,7 +61,8 @@ export default async function MeetingDetailPage({
             <div>
               <h3 className="font-medium mb-1">Ratings</h3>
               {ratings.map((r) => (
-                <div key={r.userId} className="text-muted-foreground">
+                <div key={r.userId} className="flex items-center gap-1.5 text-muted-foreground">
+                  <UserAvatar user={{ name: r.userName }} size="sm" />
                   {r.userName || r.userEmail}: {r.rating}/10
                 </div>
               ))}

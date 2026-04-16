@@ -78,5 +78,21 @@ test.describe('EOS Hub happy path', () => {
     // --- Settings page ---
     await page.click('a[href="/settings"]');
     await expect(page.locator('h1')).toContainText('Settings');
+
+    // --- P2 pages ---
+    await page.click('a[href="/core-values"]');
+    await expect(page.locator('h1')).toContainText('Core Values');
+
+    await page.click('a[href="/vto"]');
+    await expect(page.locator('h1')).toContainText('V/TO');
+
+    await page.click('a[href="/accountability"]');
+    await expect(page.locator('h1')).toContainText('Accountability');
+
+    await page.click('a[href="/people"]');
+    await expect(page.locator('h1')).toContainText('People');
+
+    await page.click('a[href="/processes"]');
+    await expect(page.locator('h1')).toContainText('Process');
   });
 });

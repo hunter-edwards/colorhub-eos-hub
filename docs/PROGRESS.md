@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-16**. Phases 0–12 complete (P1 MVP). P2 plan written at `docs/PLAN-P2.md`. GitHub: `hunter-edwards/colorhub-eos-hub`. Deployed on Vercel.
+Last session: **2026-04-16**. P1 (Phases 0–12), P2 (Phases 13–18), P3 (Phases 19–21) all complete. GitHub: `hunter-edwards/colorhub-eos-hub`. Deployed on Vercel.
 
 ## Where things live
 
@@ -96,30 +96,73 @@ Playwright config + Chromium. Happy-path test: admin API creates temp test user 
 - **Metadata** title fixed from "Create Next App" → "Colorhub EOS Hub"
 - **Skipped:** 12.5 email digest (needs Resend setup)
 
-## Next up — P2 (EOS Framework + Profiles)
+### Phase 13 — User Profiles ✅
+`profileColor` column on users. `<UserAvatar>` component (initials or image, 3 sizes). Profile settings form with name, avatar URL, 8-color picker. Server actions `getProfile`/`updateProfile`.
 
-Full plan at `docs/PLAN-P2.md`. Six phases:
+### Phase 14 — Core Values ✅
+`core_values` table. CRUD server actions (list, create, update, reorder, delete). Page at `/core-values` with numbered cards, inline edit, drag-to-reorder (dnd-kit), arrow button fallback.
 
-- **Phase 13 — User Profiles:** editable name, profile color, avatar URL, `<UserAvatar>` component used app-wide
-- **Phase 14 — Core Values:** 3-7 values per team, CRUD page at `/core-values`, referenced by V/TO and People Analyzer
-- **Phase 15 — V/TO:** Vision/Traction Organizer at `/vto` with all 8 EOS sections, auto-pulls core values + rocks + issues
-- **Phase 16 — Accountability Chart:** seat-based org chart at `/accountability` with roles, GWC, person assignment
-- **Phase 17 — People Analyzer:** rate team against core values + GWC at `/people`, quarter-over-quarter tracking
-- **Phase 18 — Process Documentation:** document core processes at `/processes` with ordered steps
+### Phase 15 — V/TO ✅
+`vto` table (one per team, upsert). Page at `/vto` with all 8 EOS sections in 2-column layout. Editable: core focus, 10-year target, marketing strategy, 3-year picture, 1-year plan. Read-only: core values, rocks, issues.
 
-Sidebar regroup into Strategy / Execution / People / Meetings sections.
+### Phase 16 — Accountability Chart ✅
+`seats` table (self-referential tree). Page at `/accountability` with tree layout, seat cards (title, 5 roles, person, GWC dots), edit dialog, add/delete seats.
+
+### Phase 17 — People Analyzer ✅
+`people_ratings` table + `people_rating_value` enum. Page at `/people` with matrix table (rows=members, cols=core values + GWC). Clickable +/+/-/- cycling, quarter selector, "below the bar" highlighting.
+
+### Phase 18 — Process Documentation ✅
+`processes` table. Page at `/processes` with expandable cards, ordered steps (drag-to-reorder), owner assignment, add/remove steps.
+
+### P2 sidebar regroup ✅
+Sidebar grouped into Strategy (V/TO, Core Values), Execution (Rocks, Scorecard, To-Dos, Issues), People (Accountability, People Analyzer, Processes), Meetings (L10 Live, History). Settings at bottom.
+
+## P3 — Polish & Features ✅
+
+Full plan at `docs/PLAN-P3.md`.
+
+### 19.1 — UserAvatar wired everywhere ✅
+`<UserAvatar>` added to: rock cards, todo owners, meeting panels (rock review, scorecard, todo review, IDS), meeting history ratings.
+
+### 19.2 — middleware.ts → proxy.ts ✅
+Renamed to satisfy Next 16 deprecation warning.
+
+### 19.3 — Performance indexes ✅
+8 indexes added: `core_values(team_id)`, `seats(team_id)`, `people_ratings(subject_id, quarter)`, `processes(team_id)`, `rocks(quarter)`, `rock_activity(rock_id, created_at)`, `todos(status, owner_id)`, `vto(team_id)`.
+
+### 19.4 — E2E smoke test updated ✅
+Added 5 new P2 routes to Playwright happy-path test: `/core-values`, `/vto`, `/accountability`, `/people`, `/processes`.
+
+### 20.1 — Mobile responsive nav ✅
+Hamburger menu on mobile (<768px), Sheet-based nav drawer. Desktop sidebar unchanged. Layout adjusts padding for mobile top bar.
+
+### 20.2 — P2 utility tests ✅
+42 new tests across 4 files: `quarters.test.ts` (7), `people-utils.test.ts` (14), `accountability-utils.test.ts` (9), `vto-utils.test.ts` (12). Extracted pure utility functions to `src/lib/`. Total suite: 67 tests.
+
+### 20.3 — Drag-and-drop reordering ✅
+dnd-kit integration on core values list and process steps. Drag handles (GripVertical), keyboard support. Arrow buttons kept as accessible fallback.
+
+### 21.1 — Data visualization ✅
+3 recharts components: scorecard trends (LineChart, 13 weeks), meeting ratings (BarChart, color-coded), rock completion (PieChart/donut). Added "Trends" section to dashboard.
+
+### 21.2 — Quarterly review workflow ✅
+4-step guided wizard at `/quarterly-review`: Rock Review → People Review → V/TO Check → Next Quarter Planning. Step indicators, inline rock status updates, read-only people matrix, V/TO accuracy checklist, new rock creation for next quarter. Dashboard link added.
+
+### 21.3 — Export/print ✅
+Print buttons on V/TO and People Analyzer pages. CSS print stylesheet hides nav, buttons, backgrounds. Cards get borders, tables shrink for print.
 
 ## Deferred items tracked (will bite if forgotten)
 
 - **`NEXT_PUBLIC_SITE_URL`** — add before Vercel deploy (Task 11.2). The `signInWithMagicLink` server action currently falls back to `http://localhost:3000` if the `origin` header is missing. Fine in dev, wrong in prod.
-- **Rename `src/middleware.ts` → `src/proxy.ts`** — Next 16 warning only; breaks in Next 17.
+- ~~**Rename `src/middleware.ts` → `src/proxy.ts`**~~ Resolved in P3 (19.2).
 - **No RLS policies** on any table. Trust-based permissions work while the whole team is three people. Revisit before any multi-tenant or before exposing the Supabase anon key to untrusted clients.
-- **No performance indexes.** Flagged targets: `rocks.quarter`, `rock_activity(rock_id, created_at)`, `todos(status, owner_id)`, `scorecard_entries(metric_id, week_start)` (already covered by the unique). Fine at zero scale.
+- ~~**No performance indexes.**~~ Resolved in P3 (19.3).
 - **`meetings.attendees` is jsonb.** Works but forfeits FK integrity. If this grows important, swap to a `meeting_attendees` join table.
 - ~~**No sign-out button in sidebar.**~~ Resolved in Phase 12.
 - **Password min length mismatch:** server enforces 8, Supabase default is 6. Align via Supabase Auth settings or just keep 8 as the product floor.
 - **4 moderate npm audit vulns** in dev deps (never addressed).
 - **Open-redirect shape** in `/auth/callback`: always goes to `${origin}/`. If a `next`/`redirectTo` param is added later, validate that it's a relative path.
+- **Realtime sync** (Phase 7.7) — Supabase Realtime for live meeting updates. Needs Supabase dashboard config.
 
 ## Environment
 
@@ -148,6 +191,7 @@ All phases merged to `main` via PRs on GitHub (`hunter-edwards/colorhub-eos-hub`
 
 Open this repo (`~/Downloads/colorhub-eos-hub/`) and reference:
 - `docs/PROGRESS.md` — where we are
-- `docs/PLAN-P2.md` — what's next (Phases 13–18)
+- `docs/PLAN-P2.md` — P2 plan (Phases 13–18, complete)
+- `docs/PLAN-P3.md` — P3 plan (Phases 19–21, complete)
 
-Next practical step: **Phase 13 — User Profiles**.
+All phases through P3 shipped. Remaining work: deploy to Vercel (env vars), RLS policies, Supabase Realtime, email digest.

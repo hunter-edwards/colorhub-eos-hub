@@ -14,6 +14,7 @@ import {
 import { Target, ChevronDown, Plus, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/empty-state';
+import { UserAvatar } from '@/components/user-avatar';
 import { updateRockStatus } from '@/server/rocks';
 import { NewRockDialog } from './new-rock-dialog';
 
@@ -67,9 +68,12 @@ function RockCard({ rock }: { rock: Rock }) {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {rock.ownerName || rock.ownerEmail}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <UserAvatar user={{ name: rock.ownerName }} size="sm" />
+            <span className="text-xs text-muted-foreground">
+              {rock.ownerName || rock.ownerEmail}
+            </span>
+          </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span>Progress</span>

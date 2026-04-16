@@ -30,6 +30,23 @@ import {
   updateProcess,
   deleteProcess,
 } from '@/server/processes';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type Process = {
   id: string;
@@ -45,6 +62,95 @@ type Process = {
 
 type Member = { id: string; name: string | null; email: string };
 
+function SortableStepItem({
+  step,
+  index,
+  total,
+  stepId,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  onUpdateText,
+}: {
+  step: string;
+  index: number;
+  total: number;
+  stepId: string;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+  onUpdateText: (value: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: stepId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 ${isDragging ? 'relative z-50 opacity-80' : ''}`}
+    >
+      <button
+        className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
+        aria-label="Drag to reorder step"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4 shrink-0" />
+      </button>
+      <span className="text-xs font-medium text-muted-foreground w-5 shrink-0">
+        {index + 1}.
+      </span>
+      <Input
+        value={step}
+        onChange={(e) => onUpdateText(e.target.value)}
+        placeholder={`Step ${index + 1}`}
+        className="flex-1"
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0"
+        disabled={index === 0}
+        onClick={onMoveUp}
+        title="Move up"
+      >
+        <ArrowUp className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0"
+        disabled={index === total - 1}
+        onClick={onMoveDown}
+        title="Move down"
+      >
+        <ArrowDown className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0 text-destructive"
+        onClick={onRemove}
+        title="Remove step"
+      >
+        <X className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+}
+
 function StepsList({
   steps,
   onUpdate,
@@ -52,6 +158,17 @@ function StepsList({
   steps: string[];
   onUpdate: (steps: string[]) => void;
 }) {
+  // Stable IDs for sortable context -- use index-based IDs that stay consistent
+  // as long as the array length doesn't change mid-drag.
+  const stepIds = steps.map((_, i) => `step-${i}`);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const moveStep = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= steps.length) return;
@@ -74,55 +191,46 @@ function StepsList({
     onUpdate([...steps, '']);
   };
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = stepIds.indexOf(String(active.id));
+    const newIndex = stepIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    onUpdate(arrayMove(steps, oldIndex, newIndex));
+  }
+
   return (
     <div className="space-y-2">
       <Label>Steps</Label>
       {steps.length === 0 && (
         <p className="text-xs text-muted-foreground">No steps added yet.</p>
       )}
-      {steps.map((step, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground w-5 shrink-0">
-            {i + 1}.
-          </span>
-          <Input
-            value={step}
-            onChange={(e) => updateStep(i, e.target.value)}
-            placeholder={`Step ${i + 1}`}
-            className="flex-1"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            disabled={i === 0}
-            onClick={() => moveStep(i, -1)}
-            title="Move up"
-          >
-            <ArrowUp className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            disabled={i === steps.length - 1}
-            onClick={() => moveStep(i, 1)}
-            title="Move down"
-          >
-            <ArrowDown className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-destructive"
-            onClick={() => removeStep(i)}
-            title="Remove step"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      ))}
+      {steps.length > 0 && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
+            {steps.map((step, i) => (
+              <SortableStepItem
+                key={stepIds[i]}
+                stepId={stepIds[i]}
+                step={step}
+                index={i}
+                total={steps.length}
+                onMoveUp={() => moveStep(i, -1)}
+                onMoveDown={() => moveStep(i, 1)}
+                onRemove={() => removeStep(i)}
+                onUpdateText={(value) => updateStep(i, value)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      )}
       <Button variant="outline" size="sm" onClick={addStep} className="mt-1">
         <Plus className="h-3 w-3 mr-1" /> Add Step
       </Button>

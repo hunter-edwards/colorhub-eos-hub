@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { listOpenTodos, toggleTodo, carryOverTodo, dropTodo } from '@/server/todos';
+import { UserAvatar } from '@/components/user-avatar';
 
 type Todo = {
   id: string;
@@ -66,7 +67,10 @@ function TodoRow({ todo, onAction }: { todo: Todo; onAction: () => void }) {
         }}
       />
       <span className="flex-1 text-sm">{todo.title}</span>
-      <span className="text-xs text-muted-foreground">{todo.ownerName || todo.ownerEmail}</span>
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <UserAvatar user={{ name: todo.ownerName }} size="sm" />
+        {todo.ownerName || todo.ownerEmail}
+      </span>
       <span className="text-xs text-muted-foreground">{todo.dueDate}</span>
       <div className="flex gap-1 opacity-0 group-hover:opacity-100">
         <Button

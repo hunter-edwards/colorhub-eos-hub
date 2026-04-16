@@ -21,8 +21,26 @@ import {
   Check,
   X,
   Heart,
+  GripVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type CoreValue = {
   id: string;
@@ -31,7 +49,7 @@ type CoreValue = {
   orderIdx: number;
 };
 
-function CoreValueCard({
+function SortableCoreValueCard({
   value,
   index,
   total,
@@ -44,6 +62,20 @@ function CoreValueCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: value.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(value.title);
   const [description, setDescription] = useState(value.description ?? '');
@@ -76,89 +108,104 @@ function CoreValueCard({
   }
 
   return (
-    <Card>
-      <CardContent className="flex items-start gap-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-          {index + 1}
-        </span>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? 'relative z-50 opacity-80' : ''}
+    >
+      <Card>
+        <CardContent className="flex items-start gap-3">
+          <button
+            className="mt-1 cursor-grab touch-none text-muted-foreground hover:text-foreground"
+            aria-label="Drag to reorder"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
 
-        {editing ? (
-          <div className="flex-1 space-y-2">
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Core value title"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSave();
-                if (e.key === 'Escape') handleCancel();
-              }}
-            />
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description (optional)"
-              className="min-h-12"
-            />
-            <div className="flex gap-1">
-              <Button size="sm" onClick={handleSave} disabled={isPending || !title.trim()}>
-                <Check className="h-3 w-3 mr-1" /> Save
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            {index + 1}
+          </span>
+
+          {editing ? (
+            <div className="flex-1 space-y-2">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Core value title"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSave();
+                  if (e.key === 'Escape') handleCancel();
+                }}
+              />
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description (optional)"
+                className="min-h-12"
+              />
+              <div className="flex gap-1">
+                <Button size="sm" onClick={handleSave} disabled={isPending || !title.trim()}>
+                  <Check className="h-3 w-3 mr-1" /> Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancel}>
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{value.title}</p>
+              {value.description && (
+                <p className="text-xs text-muted-foreground mt-0.5">{value.description}</p>
+              )}
+            </div>
+          )}
+
+          {!editing && (
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Move up"
+                disabled={index === 0 || isPending}
+                onClick={onMoveUp}
+              >
+                <ChevronUp className="h-3 w-3" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-3 w-3 mr-1" /> Cancel
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Move down"
+                disabled={index === total - 1 || isPending}
+                onClick={onMoveDown}
+              >
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Edit"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Delete"
+                onClick={handleDelete}
+                disabled={isPending}
+              >
+                <Trash2 className="h-3 w-3" />
               </Button>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">{value.title}</p>
-            {value.description && (
-              <p className="text-xs text-muted-foreground mt-0.5">{value.description}</p>
-            )}
-          </div>
-        )}
-
-        {!editing && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Move up"
-              disabled={index === 0 || isPending}
-              onClick={onMoveUp}
-            >
-              <ChevronUp className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Move down"
-              disabled={index === total - 1 || isPending}
-              onClick={onMoveDown}
-            >
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Edit"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Delete"
-              onClick={handleDelete}
-              disabled={isPending}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -237,6 +284,13 @@ export function CoreValuesList({
 }) {
   const [, startTransition] = useTransition();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   function handleReorder(index: number, direction: 'up' | 'down') {
     const ids = initialValues.map((v) => v.id);
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -245,6 +299,26 @@ export function CoreValuesList({
     [ids[index], ids[targetIndex]] = [ids[targetIndex], ids[index]];
     startTransition(async () => {
       await reorderCoreValues(ids);
+      toast.success('Order updated');
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = initialValues.findIndex((v) => v.id === active.id);
+    const newIndex = initialValues.findIndex((v) => v.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(
+      initialValues.map((v) => v.id),
+      oldIndex,
+      newIndex
+    );
+
+    startTransition(async () => {
+      await reorderCoreValues(newOrder);
       toast.success('Order updated');
     });
   }
@@ -266,16 +340,27 @@ export function CoreValuesList({
 
   return (
     <div className="space-y-3">
-      {initialValues.map((value, i) => (
-        <CoreValueCard
-          key={value.id}
-          value={value}
-          index={i}
-          total={initialValues.length}
-          onMoveUp={() => handleReorder(i, 'up')}
-          onMoveDown={() => handleReorder(i, 'down')}
-        />
-      ))}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={initialValues.map((v) => v.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {initialValues.map((value, i) => (
+            <SortableCoreValueCard
+              key={value.id}
+              value={value}
+              index={i}
+              total={initialValues.length}
+              onMoveUp={() => handleReorder(i, 'up')}
+              onMoveDown={() => handleReorder(i, 'down')}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
       <AddCoreValueForm />
     </div>
   );

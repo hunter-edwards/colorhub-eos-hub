@@ -1,0 +1,23 @@
+@media print {
+  /* Hide sidebar nav */
+  nav { display: none !important; }
+
+  /* Hide non-printable elements */
+  .no-print, [data-no-print] { display: none !important; }
+
+  /* Full width content */
+  main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+  /* Remove backgrounds for ink saving */
+  .bg-background { background: white !important; }
+
+  /* Ensure cards have borders for structure */
+  [class*="card"] { border: 1px solid #ddd !important; break-inside: avoid; }
+
+  /* V/TO specific: ensure grid prints in columns */
+  .grid { display: block !important; }
+  .grid > * { break-inside: avoid; margin-bottom: 1rem; }
+
+  /* People matrix: ensure table fits */
+  table { font-size: 10px !important; }
+}

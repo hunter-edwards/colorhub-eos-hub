@@ -20,6 +20,7 @@ import {
   Mountain,
   AlertCircle,
   Heart,
+  Printer,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -147,6 +148,7 @@ function SectionSaveButton({
       size="sm"
       disabled={isPending}
       onClick={onClick}
+      className="no-print"
     >
       <Save className="mr-1 h-4 w-4" />
       {isPending ? 'Saving...' : 'Save'}
@@ -216,7 +218,14 @@ export function VTOForm({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div>
+      <div className="mb-4 flex justify-end no-print">
+        <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Printer className="mr-1 h-4 w-4" />
+          Print V/TO
+        </Button>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
       {/* ─── VISION COLUMN ─────────────────────────────── */}
       <div className="space-y-6">
         <h2 className="text-lg font-semibold text-muted-foreground tracking-wide uppercase">
@@ -246,7 +255,7 @@ export function VTOForm({
                 ))}
               </ul>
             )}
-            <div className="mt-3">
+            <div className="mt-3 no-print">
               <Link href="/core-values">
                 <Button variant="outline" size="sm">
                   Edit Core Values <ArrowRight className="ml-1 h-3 w-3" />
@@ -530,7 +539,7 @@ export function VTOForm({
                 ))}
               </ul>
             )}
-            <div className="mt-3">
+            <div className="mt-3 no-print">
               <Link href="/rocks">
                 <Button variant="outline" size="sm">
                   View Rocks <ArrowRight className="ml-1 h-3 w-3" />
@@ -570,7 +579,7 @@ export function VTOForm({
                 ))}
               </ul>
             )}
-            <div className="mt-3">
+            <div className="mt-3 no-print">
               <Link href="/issues">
                 <Button variant="outline" size="sm">
                   View Issues <ArrowRight className="ml-1 h-3 w-3" />
@@ -579,6 +588,7 @@ export function VTOForm({
             </div>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );
