@@ -93,3 +93,29 @@ export async function setEntry(
     });
   revalidatePath('/scorecard');
 }
+
+export async function updateMetric(
+  metricId: string,
+  input: {
+    name?: string;
+    ownerId?: string;
+    goal?: string | null;
+    comparator?: 'gte' | 'lte' | 'eq' | 'range';
+    goalMin?: string | null;
+    goalMax?: string | null;
+    unit?: string | null;
+  }
+) {
+  await requireUser();
+  await db
+    .update(scorecardMetrics)
+    .set(input)
+    .where(eq(scorecardMetrics.id, metricId));
+  revalidatePath('/scorecard');
+}
+
+export async function deleteMetric(metricId: string) {
+  await requireUser();
+  await db.delete(scorecardMetrics).where(eq(scorecardMetrics.id, metricId));
+  revalidatePath('/scorecard');
+}
