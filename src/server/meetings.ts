@@ -5,6 +5,7 @@ import { meetings, meetingRatings, headlines, users } from '@/db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { collectMeetingContext, generateSummary } from './ai-summary';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -39,6 +40,19 @@ export async function endMeeting(meetingId: string) {
     .update(meetings)
     .set({ endedAt: new Date(), ratingAvg: avg })
     .where(eq(meetings.id, meetingId));
+
+  // Generate AI summary (non-blocking — meeting still ends if this fails)
+  try {
+    const ctx = await collectMeetingContext(meetingId);
+    const summary = await generateSummary(ctx);
+    await db
+      .update(meetings)
+      .set({ aiSummaryMd: summary })
+      .where(eq(meetings.id, meetingId));
+  } catch (e) {
+    console.error('AI summary generation failed:', e);
+  }
+
   revalidatePath('/meeting/live');
   revalidatePath('/meeting/history');
   return { meetingId };
