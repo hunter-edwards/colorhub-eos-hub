@@ -1,6 +1,6 @@
 # Colorhub EOS Hub — Progress Log
 
-Last session: **2026-04-16**. Phases 9–12 on `claude/adoring-benz`. All 12 phases complete (email digest skipped).
+Last session: **2026-04-16**. Phases 0–12 complete (P1 MVP). P2 plan written at `docs/PLAN-P2.md`. GitHub: `hunter-edwards/colorhub-eos-hub`. Deployed on Vercel.
 
 ## Where things live
 
@@ -96,6 +96,19 @@ Playwright config + Chromium. Happy-path test: admin API creates temp test user 
 - **Metadata** title fixed from "Create Next App" → "Colorhub EOS Hub"
 - **Skipped:** 12.5 email digest (needs Resend setup)
 
+## Next up — P2 (EOS Framework + Profiles)
+
+Full plan at `docs/PLAN-P2.md`. Six phases:
+
+- **Phase 13 — User Profiles:** editable name, profile color, avatar URL, `<UserAvatar>` component used app-wide
+- **Phase 14 — Core Values:** 3-7 values per team, CRUD page at `/core-values`, referenced by V/TO and People Analyzer
+- **Phase 15 — V/TO:** Vision/Traction Organizer at `/vto` with all 8 EOS sections, auto-pulls core values + rocks + issues
+- **Phase 16 — Accountability Chart:** seat-based org chart at `/accountability` with roles, GWC, person assignment
+- **Phase 17 — People Analyzer:** rate team against core values + GWC at `/people`, quarter-over-quarter tracking
+- **Phase 18 — Process Documentation:** document core processes at `/processes` with ordered steps
+
+Sidebar regroup into Strategy / Execution / People / Meetings sections.
+
 ## Deferred items tracked (will bite if forgotten)
 
 - **`NEXT_PUBLIC_SITE_URL`** — add before Vercel deploy (Task 11.2). The `signInWithMagicLink` server action currently falls back to `http://localhost:3000` if the `origin` header is missing. Fine in dev, wrong in prod.
@@ -121,10 +134,7 @@ Supabase project URL allowlist includes `http://localhost:3000/**`.
 
 ## Branch info
 
-Phases 3–8 were built on branch `claude/sad-khorana` (worktree at `.claude/worktrees/sad-khorana`). Merge into `main` when ready:
-```bash
-git merge claude/sad-khorana
-```
+All phases merged to `main` via PRs on GitHub (`hunter-edwards/colorhub-eos-hub`).
 
 ## Known dev-environment gotchas
 
@@ -136,8 +146,8 @@ git merge claude/sad-khorana
 
 ## Resuming
 
-To resume in a new session, open either:
-- This repo (`~/Downloads/colorhub-eos-hub/`) directly and reference `docs/PROGRESS.md` + the plan docs in the packagent repo.
-- The packagent worktree (where the plan lives) and work across both.
+Open this repo (`~/Downloads/colorhub-eos-hub/`) and reference:
+- `docs/PROGRESS.md` — where we are
+- `docs/PLAN-P2.md` — what's next (Phases 13–18)
 
-Next practical step: **Phase 9 — Teams webhook**. Then Phase 10 (Dashboard), Phase 11 (E2E + deploy). Also need to merge `claude/sad-khorana` into `main` before or during next session.
+Next practical step: **Phase 13 — User Profiles**.
