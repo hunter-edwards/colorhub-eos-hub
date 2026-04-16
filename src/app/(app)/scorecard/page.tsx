@@ -3,6 +3,7 @@ import { getWeekStarts } from '@/lib/scorecard-utils';
 import { listTeamMembers } from '@/server/rocks';
 import { isKnackConfigured } from '@/server/knack-sync';
 import { ScorecardGrid } from './grid';
+import { KPICharts } from './kpi-charts';
 import { KnackSyncButton } from './knack-sync-button';
 
 export default async function ScorecardPage() {
@@ -20,6 +21,7 @@ export default async function ScorecardPage() {
         <h1 className="text-2xl font-bold tracking-tight">Scorecard</h1>
         {knackReady && <KnackSyncButton />}
       </div>
+      <KPICharts metrics={metrics} entries={entries} weeks={weeks} />
       <ScorecardGrid metrics={metrics} entries={entries} weeks={weeks} members={members} />
     </div>
   );
