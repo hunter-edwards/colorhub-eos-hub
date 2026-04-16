@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { updatePassword } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,9 +21,11 @@ export function PasswordForm() {
         setPending(false);
         if ('ok' in r) {
           setSuccess(true);
+          toast.success('Password updated');
           (document.getElementById('password-form') as HTMLFormElement | null)?.reset();
         } else {
           setError(r.error ?? 'Something went wrong');
+          toast.error(r.error ?? 'Something went wrong');
         }
       }}
       id="password-form"

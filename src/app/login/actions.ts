@@ -17,6 +17,11 @@ export async function signInWithMagicLink(formData: FormData) {
   return error ? { error: error.message } : { ok: true as const };
 }
 
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+}
+
 export async function signInWithPassword(formData: FormData) {
   const email = (formData.get('email') as string | null)?.trim();
   const password = formData.get('password') as string | null;

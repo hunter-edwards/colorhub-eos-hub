@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useOptimistic, useTransition } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Trash2, RotateCcw, Plus } from 'lucide-react';
+import { Trash2, RotateCcw, Plus, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { EmptyState } from '@/components/empty-state';
 import { createTodo, toggleTodo, dropTodo, carryOverTodo } from '@/server/todos';
 
 type Todo = {
@@ -34,13 +36,20 @@ function daysLeft(dueDate: string): { text: string; overdue: boolean } {
 
 function TodoRow({ todo }: { todo: Todo }) {
   const dl = daysLeft(todo.dueDate);
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(todo.status);
+  const [, startTransition] = useTransition();
   return (
     <div className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent group">
       <Checkbox
-        checked={todo.status === 'done'}
-        onCheckedChange={() => toggleTodo(todo.id)}
+        checked={optimisticStatus === 'done'}
+        onCheckedChange={() => {
+          startTransition(async () => {
+            setOptimisticStatus(optimisticStatus === 'done' ? 'open' : 'done');
+            await toggleTodo(todo.id);
+          });
+        }}
       />
-      <span className={`flex-1 text-sm ${todo.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+      <span className={`flex-1 text-sm ${optimisticStatus === 'done' ? 'line-through text-muted-foreground' : ''}`}>
         {todo.title}
       </span>
       <span className="text-xs text-muted-foreground">
@@ -55,7 +64,10 @@ function TodoRow({ todo }: { todo: Todo }) {
           size="sm"
           className="h-6 w-6 p-0"
           title="Carry over (+7 days)"
-          onClick={() => carryOverTodo(todo.id)}
+          onClick={async () => {
+            await carryOverTodo(todo.id);
+            toast.success('To-do carried over (+7 days)');
+          }}
         >
           <RotateCcw className="h-3 w-3" />
         </Button>
@@ -64,7 +76,10 @@ function TodoRow({ todo }: { todo: Todo }) {
           size="sm"
           className="h-6 w-6 p-0"
           title="Drop"
-          onClick={() => dropTodo(todo.id)}
+          onClick={async () => {
+            await dropTodo(todo.id);
+            toast.success('To-do dropped');
+          }}
         >
           <Trash2 className="h-3 w-3" />
         </Button>
@@ -88,6 +103,7 @@ function AddTodoForm({ members }: { members: Member[] }) {
         await createTodo({ title: title.trim(), ownerId });
         setTitle('');
         setAdding(false);
+        toast.success('To-do added');
       }}
     >
       <Input
@@ -138,7 +154,7 @@ export function TodosList({
       <TabsContent value={0} className="space-y-4">
         <AddTodoForm members={members} />
         {myTodos.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4 text-center">No open to-dos.</p>
+          <EmptyState icon={CheckCircle2} title="All caught up!" description="No open to-dos" />
         )}
         {myTodos.sort(sortByDue).map((todo) => (
           <TodoRow key={todo.id} todo={todo} />
@@ -148,7 +164,7 @@ export function TodosList({
       <TabsContent value={1} className="space-y-4">
         <AddTodoForm members={members} />
         {todos.length === 0 && (
-          <p className="text-sm text-muted-foreground py-4 text-center">No open to-dos.</p>
+          <EmptyState icon={CheckCircle2} title="All caught up!" description="No open to-dos" />
         )}
         {[...todos].sort(sortByDue).map((todo) => (
           <TodoRow key={todo.id} todo={todo} />
