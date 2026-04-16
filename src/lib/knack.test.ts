@@ -15,6 +15,7 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
     shipDate: '2026-04-13',
     orderDate: '2026-04-01',
     dueDate: '2026-04-15',
+    dateSentToInvoicing: null,
     revenue: 1000,
     ...overrides,
   };
@@ -107,6 +108,24 @@ describe('computeWeeklyKPIs', () => {
     expect(result[0].avgDaysOrderToShip).toBeNull();
     expect(result[0].onTimeDeliveryPct).toBeNull();
     expect(result[0].weeklyRevenue).toBe(0);
+  });
+
+  it('uses dateSentToInvoicing as effective ship date when available', () => {
+    const weeks = ['2026-04-06']; // week of Apr 6
+    const runs = [
+      makeRun({ shipDate: '2026-04-13', dateSentToInvoicing: '2026-04-07' }),
+    ];
+    const result = computeWeeklyKPIs(runs, weeks);
+    // Run should land in week of Apr 6 (via dateSentToInvoicing), not Apr 13
+    expect(result[0].parentJobsShipped).toBe(1);
+  });
+
+  it('falls back to shipDate when dateSentToInvoicing is null', () => {
+    const runs = [
+      makeRun({ shipDate: '2026-04-13', dateSentToInvoicing: null }),
+    ];
+    const result = computeWeeklyKPIs(runs, weeks);
+    expect(result[0].parentJobsShipped).toBe(1);
   });
 
   it('counts multiple parent jobs separately', () => {

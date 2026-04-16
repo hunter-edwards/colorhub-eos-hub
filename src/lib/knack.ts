@@ -14,6 +14,7 @@
  *   field_969   order received date e.g. "01/28/2026"
  *   field_972   due/promise date    e.g. "03/04/2026"
  *   field_961   revenue             e.g. "$7,032.80" (~70% fill rate)
+ *   field_2292  dateSentToInvoicing e.g. "04/16/2026" (auto-set by rule when field_798→Yes)
  */
 
 const KNACK_BASE = 'https://api.knack.com/v1';
@@ -33,9 +34,10 @@ export type KnackRun = {
   shippedQty: number;  // field_561
   shipped: boolean;    // field_34
   invoiced: boolean;   // field_798
-  shipDate: string | null;    // field_497 → ISO date
+  shipDate: string | null;    // field_497 → ISO date (planned)
   orderDate: string | null;   // field_969 → ISO date
   dueDate: string | null;     // field_972 → ISO date
+  dateSentToInvoicing: string | null; // field_2292 → ISO date (actual ship date)
   revenue: number;     // field_961
 };
 
@@ -86,6 +88,7 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     shipDate: parseKnackDate(rec.field_497 as string),
     orderDate: parseKnackDate(rec.field_969 as string),
     dueDate: parseKnackDate(rec.field_972 as string),
+    dateSentToInvoicing: parseKnackDate(rec.field_2292 as string),
     revenue: parseMoney(rec.field_961 as string),
   };
 }
@@ -134,6 +137,11 @@ function toKnackDate(iso: string): string {
   return `${mm}/${dd}/${yyyy}`;
 }
 
+/** Actual ship date: prefer dateSentToInvoicing (when available), fall back to planned shipDate. */
+function effectiveShipDate(r: KnackRun): string | null {
+  return r.dateSentToInvoicing ?? r.shipDate;
+}
+
 // ── KPI calculations ───────────────────────────────────────────────
 
 export type WeeklyKPIs = {
@@ -152,9 +160,10 @@ export type WeeklyKPIs = {
 export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): WeeklyKPIs[] {
   return weekStarts.map((weekStart) => {
     const weekEnd = addDays(weekStart, 7);
-    const weekRuns = runs.filter(
-      (r) => r.shipDate && r.shipDate >= weekStart && r.shipDate < weekEnd
-    );
+    const weekRuns = runs.filter((r) => {
+      const sd = effectiveShipDate(r);
+      return sd && sd >= weekStart && sd < weekEnd;
+    });
 
     return {
       weekStart,
@@ -199,12 +208,18 @@ function countParentJobsByFlag(
     if (!allFlagged) continue;
 
     const completionDate = allJobRuns.reduce(
-      (max, r) => (r.shipDate && r.shipDate > max ? r.shipDate : max),
+      (max, r) => {
+        const sd = effectiveShipDate(r);
+        return sd && sd > max ? sd : max;
+      },
       ''
     );
     if (!completionDate) continue;
 
-    if (weekRuns.some((r) => r.shipDate && getWeekStartForDate(r.shipDate) === getWeekStartForDate(completionDate))) {
+    if (weekRuns.some((r) => {
+      const sd = effectiveShipDate(r);
+      return sd && getWeekStartForDate(sd) === getWeekStartForDate(completionDate);
+    })) {
       count++;
     }
   }
@@ -223,9 +238,10 @@ function getWeekStartForDate(isoDate: string): string {
 function avgDaysOrderToShip(runs: KnackRun[]): number | null {
   const diffs: number[] = [];
   for (const r of runs) {
-    if (r.orderDate && r.shipDate) {
+    const sd = effectiveShipDate(r);
+    if (r.orderDate && sd) {
       const order = new Date(r.orderDate + 'T00:00:00');
-      const ship = new Date(r.shipDate + 'T00:00:00');
+      const ship = new Date(sd + 'T00:00:00');
       diffs.push((ship.getTime() - order.getTime()) / (1000 * 60 * 60 * 24));
     }
   }
@@ -234,9 +250,9 @@ function avgDaysOrderToShip(runs: KnackRun[]): number | null {
 }
 
 function onTimeDeliveryPct(runs: KnackRun[]): number | null {
-  const withDue = runs.filter((r) => r.dueDate && r.shipDate);
+  const withDue = runs.filter((r) => r.dueDate && effectiveShipDate(r));
   if (withDue.length === 0) return null;
-  const onTime = withDue.filter((r) => r.shipDate! <= r.dueDate!).length;
+  const onTime = withDue.filter((r) => effectiveShipDate(r)! <= r.dueDate!).length;
   return Math.round((onTime / withDue.length) * 1000) / 10;
 }
 
