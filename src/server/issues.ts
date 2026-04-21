@@ -79,3 +79,65 @@ export async function moveList(issueId: string, list: 'short_term' | 'long_term'
   await db.update(issues).set({ list }).where(eq(issues.id, issueId));
   revalidatePath('/issues');
 }
+
+/**
+ * Per-week counts of issues opened vs solved across the last N weeks.
+ * Week boundary = Monday 00:00 local.
+ * Returns [{ weekStart: ISO date, opened: number, solved: number }, ...]
+ * ordered oldest → newest.
+ */
+export async function getIssuesTrend(weekCount = 13): Promise<
+  Array<{ weekStart: string; opened: number; solved: number }>
+> {
+  // Compute the N Monday starts ordered oldest → newest
+  const now = new Date();
+  const dow = now.getDay();
+  const thisMonday = new Date(now);
+  thisMonday.setDate(now.getDate() - ((dow + 6) % 7));
+  thisMonday.setHours(0, 0, 0, 0);
+
+  const weekStarts: Date[] = [];
+  for (let i = weekCount - 1; i >= 0; i--) {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() - i * 7);
+    weekStarts.push(d);
+  }
+
+  const startBoundary = weekStarts[0];
+
+  // Pull all issues created since the window start OR solved since the window start
+  const all = await db
+    .select({
+      createdAt: issues.createdAt,
+      solvedAt: issues.solvedAt,
+    })
+    .from(issues);
+
+  // Bucket into weeks
+  function weekIndex(d: Date): number {
+    const t = d.getTime();
+    if (t < startBoundary.getTime()) return -1;
+    // Each bucket is 7 days from weekStarts[i]
+    for (let i = weekStarts.length - 1; i >= 0; i--) {
+      if (t >= weekStarts[i].getTime()) return i;
+    }
+    return -1;
+  }
+
+  const buckets = weekStarts.map((ws) => ({
+    weekStart: ws.toISOString().slice(0, 10),
+    opened: 0,
+    solved: 0,
+  }));
+
+  for (const row of all) {
+    const createdIdx = weekIndex(row.createdAt);
+    if (createdIdx >= 0) buckets[createdIdx].opened++;
+    if (row.solvedAt) {
+      const solvedIdx = weekIndex(row.solvedAt);
+      if (solvedIdx >= 0) buckets[solvedIdx].solved++;
+    }
+  }
+
+  return buckets;
+}
