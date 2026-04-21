@@ -16,13 +16,36 @@ export default async function ScorecardPage() {
   ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Scorecard</h1>
+    <div className="space-y-8">
+      <header className="flex items-start justify-between gap-4 border-b border-border/60 pb-6">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight">Scorecard</h1>
+          <p className="text-sm text-muted-foreground">
+            Weekly KPIs pulled from Knack. Click any chart to see the runs behind the number.
+          </p>
+        </div>
         {knackReady && <KnackSyncButton />}
-      </div>
-      <KPICharts metrics={metrics} entries={entries} weeks={weeks} />
-      <ScorecardGrid metrics={metrics} entries={entries} weeks={weeks} members={members} />
+      </header>
+
+      <section className="space-y-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Key metrics
+          </h2>
+          <span className="text-xs text-muted-foreground">Last 13 weeks</span>
+        </div>
+        <KPICharts metrics={metrics} entries={entries} weeks={weeks} />
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            All metrics
+          </h2>
+          <span className="text-xs text-muted-foreground">{metrics.length} tracked</span>
+        </div>
+        <ScorecardGrid metrics={metrics} entries={entries} weeks={weeks} members={members} />
+      </section>
     </div>
   );
 }

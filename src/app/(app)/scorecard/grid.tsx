@@ -71,9 +71,9 @@ function Cell({
 
   const bgClass =
     color === 'green'
-      ? 'bg-green-100 dark:bg-green-900/30'
+      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
       : color === 'red'
-        ? 'bg-red-100 dark:bg-red-900/30'
+        ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
         : '';
 
   if (editing) {
@@ -82,7 +82,7 @@ function Cell({
         <input
           type="number"
           step="any"
-          className="w-full h-full px-1 py-0.5 text-xs text-center border-0 outline-none bg-background"
+          className="w-full h-full px-1 py-0.5 text-xs text-center tabular-nums border-0 outline-none bg-background ring-1 ring-primary"
           value={input}
           autoFocus
           onChange={(e) => setInput(e.target.value)}
@@ -106,10 +106,10 @@ function Cell({
 
   return (
     <td
-      className={`px-2 py-1 text-xs text-center cursor-pointer hover:ring-1 hover:ring-primary ${bgClass}`}
+      className={`px-2 py-1 text-xs tabular-nums text-center cursor-pointer transition-colors hover:ring-1 hover:ring-inset hover:ring-primary/50 ${bgClass}`}
       onClick={() => setEditing(true)}
     >
-      {value ?? '–'}
+      {value ?? <span className="text-muted-foreground/40">–</span>}
     </td>
   );
 }
@@ -391,14 +391,15 @@ export function ScorecardGrid({
         </Button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b">
-              <th className="text-left px-2 py-1 font-medium min-w-[180px]">Metric</th>
-              <th className="text-left px-2 py-1 font-medium text-xs text-muted-foreground">Goal</th>
+            <tr className="border-b border-border/60 bg-muted/30">
+              <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[200px]">Metric</th>
+              <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Goal</th>
               {weeks.map((w) => (
-                <th key={w} className="px-2 py-1 text-xs font-medium text-center min-w-[60px]">
+                <th key={w} className="px-2 py-2 text-[11px] font-medium tabular-nums text-muted-foreground text-center min-w-[60px]">
                   {formatWeek(w)}
                 </th>
               ))}
@@ -407,14 +408,14 @@ export function ScorecardGrid({
           <tbody>
             {metrics.length === 0 && (
               <tr>
-                <td colSpan={weeks.length + 2} className="text-center py-8 text-muted-foreground text-sm">
+                <td colSpan={weeks.length + 2} className="text-center py-12 text-muted-foreground text-sm">
                   No metrics yet. Add one to get started.
                 </td>
               </tr>
             )}
             {metrics.map((m) => (
-              <tr key={m.id} className="border-b hover:bg-accent/50 group">
-                <td className="px-2 py-1">
+              <tr key={m.id} className="border-b border-border/40 last:border-b-0 hover:bg-accent/30 group">
+                <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1">
                     <div className="flex-1">
                       <div className="text-sm font-medium">{m.name}</div>
@@ -440,7 +441,7 @@ export function ScorecardGrid({
                     </div>
                   </div>
                 </td>
-                <td className="px-2 py-1 text-xs text-muted-foreground whitespace-nowrap">
+                <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                   {goalDisplay(m)} {m.unit ?? ''}
                 </td>
                 {weeks.map((w) => (
@@ -455,6 +456,7 @@ export function ScorecardGrid({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <AddMetricDialog open={dialogOpen} onOpenChange={setDialogOpen} members={members} />

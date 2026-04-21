@@ -148,6 +148,43 @@ export async function isKnackConfigured(): Promise<boolean> {
   return !!getKnackConfig();
 }
 
+export type DrilldownRun = {
+  id: string;
+  jobId: string;
+  customer: string;
+  orderDate: string | null;
+  completionDate: string | null;
+  dueDate: string | null;
+  revenue: number;
+  invoiced: boolean;
+  onTime: boolean | null;
+};
+
+/**
+ * Fetch the list of completed runs whose completion date falls within
+ * the given week. Used for the per-KPI drill-down under each chart.
+ */
+export async function getCompletedRunsForWeek(weekStart: string): Promise<DrilldownRun[]> {
+  await requireUser();
+  const config = getKnackConfig();
+  if (!config) return [];
+
+  const weekEnd = addDays(weekStart, 7);
+  const runs = await fetchCompletedRuns(config, weekStart, weekEnd);
+
+  return runs.map((r) => ({
+    id: r.id,
+    jobId: r.jobId,
+    customer: r.customer,
+    orderDate: r.orderDate,
+    completionDate: r.dateSentToInvoicing,
+    dueDate: r.dueDate,
+    revenue: r.revenue,
+    invoiced: r.invoiced,
+    onTime: r.dueDate && r.dateSentToInvoicing ? r.dateSentToInvoicing <= r.dueDate : null,
+  }));
+}
+
 function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00');
   d.setDate(d.getDate() + days);
