@@ -12,7 +12,7 @@ import {
   rocks,
   rockActivity,
 } from '@/db/schema';
-import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, desc, gte, lte } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
@@ -295,7 +295,10 @@ export async function getMeetingChangelog(meetingId: string): Promise<MeetingCha
       .leftJoin(users, eq(todos.ownerId, users.id))
       .where(
         // Either explicitly sourced from this meeting, or created during the window
-        sql`(${todos.sourceMeetingId} = ${meetingId} OR (${todos.createdAt} >= ${start} AND ${todos.createdAt} <= ${end}))`
+        or(
+          eq(todos.sourceMeetingId, meetingId),
+          and(gte(todos.createdAt, start), lte(todos.createdAt, end))
+        )
       ),
 
     db

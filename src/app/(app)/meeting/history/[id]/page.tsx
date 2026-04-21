@@ -12,12 +12,17 @@ export default async function MeetingDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [meeting, ratings, hdls, changelog] = await Promise.all([
+  const [meeting, ratings, hdls, changelogResult] = await Promise.all([
     getMeeting(id),
     getMeetingRatings(id),
     listHeadlines(id),
-    getMeetingChangelog(id),
+    // Don't 500 the whole page if changelog query blows up — just hide the section.
+    getMeetingChangelog(id).catch((e) => {
+      console.error('getMeetingChangelog failed:', e);
+      return null;
+    }),
   ]);
+  const changelog = changelogResult;
 
   if (!meeting) notFound();
 
