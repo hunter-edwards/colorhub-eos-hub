@@ -62,11 +62,43 @@ async function knackFetch(
 
 function parseKnackDate(val: string | null | undefined): string | null {
   if (!val || !val.trim()) return null;
-  // Knack dates come as "MM/DD/YYYY"
-  const parts = val.split('/');
+  // Knack dates come as "MM/DD/YYYY" or "MM/DD/YYYY H:MMam|pm" for datetime fields.
+  // Take the date part; drop any trailing time.
+  const datePart = val.trim().split(' ')[0];
+  const parts = datePart.split('/');
   if (parts.length !== 3) return null;
   const [mm, dd, yyyy] = parts;
+  if (!/^\d{4}$/.test(yyyy) || !/^\d{1,2}$/.test(mm) || !/^\d{1,2}$/.test(dd)) return null;
   return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+}
+
+/**
+ * Parse the dateSentToInvoicing field (field_2292), filtering out values
+ * that were bulk-stamped when the Knack rule was first activated.
+ *
+ * Known artifact: on 2026-04-21 before 07:50 AM local, a retroactive rule
+ * fire stamped ~21k existing records with the rule execution time.
+ * Treating those as null so they don't pollute KPIs; real invoicings from
+ * 07:50 AM onward that day and any other date pass through unchanged.
+ */
+export function parseInvoicingDate(val: string | null | undefined): string | null {
+  if (!val || !val.trim()) return null;
+  const [datePart, timePart] = val.trim().split(' ');
+
+  if (datePart === '04/21/2026' && timePart) {
+    const match = timePart.match(/^(\d+):(\d+)(am|pm)$/i);
+    if (match) {
+      const h = Number(match[1]);
+      const m = Number(match[2]);
+      const pm = match[3].toLowerCase() === 'pm';
+      let hour24 = h === 12 ? 0 : h;
+      if (pm) hour24 += 12;
+      // Before 07:50 AM → bulk-stamp artifact
+      if (hour24 < 7 || (hour24 === 7 && m < 50)) return null;
+    }
+  }
+
+  return parseKnackDate(val);
 }
 
 function parseMoney(val: string | null | undefined): number {
@@ -88,7 +120,7 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     shipDate: parseKnackDate(rec.field_497 as string),
     orderDate: parseKnackDate(rec.field_969 as string),
     dueDate: parseKnackDate(rec.field_972 as string),
-    dateSentToInvoicing: parseKnackDate(rec.field_2292 as string),
+    dateSentToInvoicing: parseInvoicingDate(rec.field_2292 as string),
     revenue: parseMoney(rec.field_961 as string),
   };
 }
@@ -121,7 +153,11 @@ export async function fetchCompletedRuns(
     { field: 'field_2292', operator: 'is before', value: end },
   ]);
 
-  return paginate(config, filters);
+  // Parser strips the bulk-stamp artifact (returns null), so some records
+  // may come back with dateSentToInvoicing = null. Drop those here so the
+  // rest of the pipeline can assume completedRuns are really completed.
+  const all = await paginate(config, filters);
+  return all.filter((r) => r.dateSentToInvoicing !== null);
 }
 
 /**

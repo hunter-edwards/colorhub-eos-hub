@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeWeeklyKPIs, type KnackRun } from './knack';
+import { computeWeeklyKPIs, parseInvoicingDate, type KnackRun } from './knack';
 
 function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
   return {
@@ -20,6 +20,41 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
     ...overrides,
   };
 }
+
+describe('parseInvoicingDate', () => {
+  it('returns null for blank values', () => {
+    expect(parseInvoicingDate(null)).toBeNull();
+    expect(parseInvoicingDate(undefined)).toBeNull();
+    expect(parseInvoicingDate('')).toBeNull();
+  });
+
+  it('parses a normal datetime value', () => {
+    expect(parseInvoicingDate('04/14/2026 3:37pm')).toBe('2026-04-14');
+    expect(parseInvoicingDate('04/21/2026 10:14am')).toBe('2026-04-21');
+  });
+
+  it('filters out bulk-stamp artifacts on 04/21/2026 before 07:50 AM', () => {
+    expect(parseInvoicingDate('04/21/2026 12:00am')).toBeNull();
+    expect(parseInvoicingDate('04/21/2026 2:15am')).toBeNull();
+    expect(parseInvoicingDate('04/21/2026 7:00am')).toBeNull();
+    expect(parseInvoicingDate('04/21/2026 7:49am')).toBeNull();
+  });
+
+  it('keeps 04/21/2026 values at 07:50 AM and later', () => {
+    expect(parseInvoicingDate('04/21/2026 7:50am')).toBe('2026-04-21');
+    expect(parseInvoicingDate('04/21/2026 8:13am')).toBe('2026-04-21');
+    expect(parseInvoicingDate('04/21/2026 3:00pm')).toBe('2026-04-21');
+  });
+
+  it('does not filter other dates even if before 07:50 AM', () => {
+    expect(parseInvoicingDate('04/20/2026 6:00am')).toBe('2026-04-20');
+    expect(parseInvoicingDate('04/22/2026 6:00am')).toBe('2026-04-22');
+  });
+
+  it('parses a date-only value (no time component)', () => {
+    expect(parseInvoicingDate('03/15/2026')).toBe('2026-03-15');
+  });
+});
 
 describe('computeWeeklyKPIs', () => {
   const weeks = ['2026-04-13']; // Monday Apr 13
