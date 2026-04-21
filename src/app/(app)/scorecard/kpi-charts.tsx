@@ -267,10 +267,33 @@ function KPICard({
     });
   }
 
-  // Recharts passes the chart click state. activePayload[0].payload holds the data point.
-  function handleChartClick(state: unknown) {
-    const s = state as { activePayload?: Array<{ payload?: { weekStart?: string } }> };
-    handleWeekClick(s?.activePayload?.[0]?.payload?.weekStart);
+  // Bar.onClick receives the data point directly (not wrapped in activePayload).
+  function handleBarClick(data: unknown) {
+    const d = data as { weekStart?: string } | undefined;
+    handleWeekClick(d?.weekStart);
+  }
+
+  // Custom dot for LineChart — clickable and visibly interactive.
+  type DotProps = { cx?: number; cy?: number; payload?: { weekStart?: string }; index?: number };
+  function ClickableDot(props: DotProps) {
+    const { cx, cy, payload } = props;
+    if (cx == null || cy == null || payload?.weekStart == null) return <g />;
+    const isSelected = payload.weekStart === selectedWeek;
+    return (
+      <g style={{ cursor: 'pointer' }} onClick={() => handleWeekClick(payload.weekStart)}>
+        {/* Large invisible hit area */}
+        <circle cx={cx} cy={cy} r={14} fill="transparent" />
+        {/* Visible dot */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={isSelected ? 5 : 3.5}
+          fill={def.color}
+          stroke={isSelected ? 'var(--background)' : 'none'}
+          strokeWidth={isSelected ? 2 : 0}
+        />
+      </g>
+    );
   }
 
   const deltaColor =
@@ -355,8 +378,6 @@ function KPICard({
             <BarChart
               data={chartData}
               margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
-              onClick={def.drilldown ? handleChartClick : undefined}
-              style={{ cursor: def.drilldown ? 'pointer' : 'default' }}
             >
               <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" opacity={0.4} vertical={false} />
               <XAxis
@@ -396,14 +417,14 @@ function KPICard({
                 dataKey="value"
                 fill={def.color}
                 radius={[4, 4, 0, 0]}
+                onClick={def.drilldown ? handleBarClick : undefined}
+                style={{ cursor: def.drilldown ? 'pointer' : 'default' }}
               />
             </BarChart>
           ) : (
             <LineChart
               data={chartData}
               margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
-              onClick={def.drilldown ? handleChartClick : undefined}
-              style={{ cursor: def.drilldown ? 'pointer' : 'default' }}
             >
               <CartesianGrid strokeDasharray="2 4" stroke="var(--border)" opacity={0.4} vertical={false} />
               <XAxis
@@ -444,9 +465,9 @@ function KPICard({
                 dataKey="value"
                 stroke={def.color}
                 strokeWidth={2.5}
-                dot={{ r: 3, fill: def.color, strokeWidth: 0 }}
+                dot={def.drilldown ? <ClickableDot /> : { r: 3, fill: def.color, strokeWidth: 0 }}
                 activeDot={{
-                  r: 5,
+                  r: 6,
                   fill: def.color,
                   strokeWidth: 2,
                   stroke: 'var(--background)',
@@ -498,11 +519,31 @@ function KPICard({
         </div>
       )}
 
-      {/* Click hint */}
+      {/* Week picker — always-works path to drill-down */}
       {def.drilldown && !selectedWeek && (
-        <div className="pointer-events-none flex items-center justify-center gap-1 text-[10px] text-muted-foreground/60">
-          <ChevronDown className="h-3 w-3" />
-          <span>Click a bar to see the runs</span>
+        <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <label className="text-[11px] text-muted-foreground shrink-0">Inspect week:</label>
+          <select
+            className="flex-1 rounded-md border border-border/60 bg-background px-2 py-1 text-xs tabular-nums text-foreground outline-none transition-colors hover:border-primary focus:border-primary"
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) handleWeekClick(e.target.value);
+            }}
+          >
+            <option value="" disabled>
+              Select a week…
+            </option>
+            {[...weeks].reverse().map((w) => {
+              const entry = entries.find((e) => e.metricId === metric.id && e.weekStart === w);
+              const v = entry?.value != null ? Number(entry.value) : null;
+              return (
+                <option key={w} value={w}>
+                  Week of {formatWeek(w)} — {formatValue(v, metric.unit)}
+                </option>
+              );
+            })}
+          </select>
         </div>
       )}
     </div>
