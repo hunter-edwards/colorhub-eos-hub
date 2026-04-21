@@ -138,7 +138,23 @@ function trendFromEntries(values: (number | null)[]): {
 
 // ── drill-down row ──────────────────────────────────────────
 
-function DrilldownTable({ runs }: { runs: DrilldownRun[] }) {
+/**
+ * Which columns to show in the drill-down for each KPI.
+ * Every KPI gets the always-on trio (customer #, customer name, job #).
+ * Then we add only the fields that actually feed into the metric's formula.
+ */
+type DrillColumn = 'completed' | 'ordered' | 'days' | 'due' | 'onTime' | 'revenue' | 'invoiced';
+
+const METRIC_COLUMNS: Record<string, DrillColumn[]> = {
+  'Runs Completed': ['completed'],
+  'Jobs Completed': ['completed'],
+  'Parent Jobs Invoiced': ['completed', 'invoiced'],
+  'Avg Days Order\u2192Complete': ['ordered', 'completed', 'days'],
+  'On-Time Delivery %': ['due', 'completed', 'onTime'],
+  'Weekly Revenue': ['completed', 'revenue'],
+};
+
+function DrilldownTable({ runs, metricName }: { runs: DrilldownRun[]; metricName: string }) {
   if (runs.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
@@ -147,61 +163,100 @@ function DrilldownTable({ runs }: { runs: DrilldownRun[] }) {
     );
   }
 
-  const totalRev = runs.reduce((s, r) => s + r.revenue, 0);
+  const cols = METRIC_COLUMNS[metricName] ?? ['completed'];
+  const showRevenue = cols.includes('revenue');
+  const totalRev = showRevenue ? runs.reduce((s, r) => s + r.revenue, 0) : 0;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-foreground">{runs.length} runs</span>
-        <span className="text-muted-foreground">
-          Total revenue <span className="font-medium text-foreground">${totalRev.toLocaleString()}</span>
-        </span>
+        {showRevenue && (
+          <span className="text-muted-foreground">
+            Total revenue <span className="font-medium text-foreground">${totalRev.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          </span>
+        )}
       </div>
       <div className="overflow-hidden rounded-lg border border-border/60">
         <table className="w-full text-xs">
           <thead className="bg-muted/40">
             <tr className="text-left text-muted-foreground">
-              <th className="px-3 py-2 font-medium">Job</th>
-              <th className="px-3 py-2 font-medium">Cust.</th>
-              <th className="px-3 py-2 font-medium">Ordered</th>
-              <th className="px-3 py-2 font-medium">Completed</th>
-              <th className="px-3 py-2 font-medium">Due</th>
-              <th className="px-3 py-2 text-right font-medium">Revenue</th>
-              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Cust #</th>
+              <th className="px-3 py-2 font-medium">Customer</th>
+              <th className="px-3 py-2 font-medium">Job #</th>
+              {cols.includes('ordered') && <th className="px-3 py-2 font-medium">Ordered</th>}
+              {cols.includes('completed') && <th className="px-3 py-2 font-medium">Completed</th>}
+              {cols.includes('due') && <th className="px-3 py-2 font-medium">Due</th>}
+              {cols.includes('days') && <th className="px-3 py-2 text-right font-medium">Days</th>}
+              {cols.includes('onTime') && <th className="px-3 py-2 font-medium">On-time?</th>}
+              {cols.includes('invoiced') && <th className="px-3 py-2 font-medium">Invoiced?</th>}
+              {cols.includes('revenue') && <th className="px-3 py-2 text-right font-medium">Revenue</th>}
             </tr>
           </thead>
           <tbody>
-            {runs.map((r) => (
-              <tr key={r.id} className="border-t border-border/40 hover:bg-accent/40">
-                <td className="px-3 py-2 font-mono text-[11px]">{r.jobId || '—'}</td>
-                <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{r.customer || '—'}</td>
-                <td className="px-3 py-2 tabular-nums text-muted-foreground">{formatDate(r.orderDate)}</td>
-                <td className="px-3 py-2 tabular-nums">{formatDate(r.completionDate)}</td>
-                <td className="px-3 py-2 tabular-nums text-muted-foreground">{formatDate(r.dueDate)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium">
-                  {r.revenue > 0 ? `$${r.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1.5">
-                    {r.onTime === true && (
-                      <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                        On time
-                      </span>
-                    )}
-                    {r.onTime === false && (
-                      <span className="inline-flex items-center rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-400">
-                        Late
-                      </span>
-                    )}
-                    {r.invoiced && (
-                      <span className="inline-flex items-center rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
-                        Invoiced
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {runs.map((r) => {
+              const jobLabel = r.parentJob && r.partNumber
+                ? `${r.parentJob}-${r.partNumber}`
+                : r.jobId || '—';
+              return (
+                <tr key={r.id} className="border-t border-border/40 hover:bg-accent/40">
+                  <td className="px-3 py-2 font-mono text-[11px] tabular-nums">{r.customer || '—'}</td>
+                  <td className="px-3 py-2 truncate max-w-[180px]" title={r.customerName}>
+                    {r.customerName || <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px] tabular-nums">{jobLabel}</td>
+                  {cols.includes('ordered') && (
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">{formatDate(r.orderDate)}</td>
+                  )}
+                  {cols.includes('completed') && (
+                    <td className="px-3 py-2 tabular-nums">{formatDate(r.completionDate)}</td>
+                  )}
+                  {cols.includes('due') && (
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">{formatDate(r.dueDate)}</td>
+                  )}
+                  {cols.includes('days') && (
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">
+                      {r.daysToComplete != null ? `${r.daysToComplete}d` : '—'}
+                    </td>
+                  )}
+                  {cols.includes('onTime') && (
+                    <td className="px-3 py-2">
+                      {r.onTime === true && (
+                        <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                          On time
+                        </span>
+                      )}
+                      {r.onTime === false && (
+                        <span className="inline-flex items-center rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-400">
+                          Late
+                        </span>
+                      )}
+                      {r.onTime == null && (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  )}
+                  {cols.includes('invoiced') && (
+                    <td className="px-3 py-2">
+                      {r.invoiced ? (
+                        <span className="inline-flex items-center rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          No
+                        </span>
+                      )}
+                    </td>
+                  )}
+                  {cols.includes('revenue') && (
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">
+                      {r.revenue > 0 ? `$${r.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : <span className="text-muted-foreground">—</span>}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -501,7 +556,7 @@ function KPICard({
           {pending && (
             <div className="py-4 text-center text-xs text-muted-foreground">Loading…</div>
           )}
-          {!pending && runs && <DrilldownTable runs={runs} />}
+          {!pending && runs && <DrilldownTable runs={runs} metricName={metric.name} />}
         </div>
       )}
 

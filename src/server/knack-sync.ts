@@ -151,10 +151,14 @@ export async function isKnackConfigured(): Promise<boolean> {
 export type DrilldownRun = {
   id: string;
   jobId: string;
-  customer: string;
+  parentJob: string;
+  partNumber: string;
+  customer: string;        // customer number, e.g. "162"
+  customerName: string;    // customer name, e.g. "Harbor 3D LLC"
   orderDate: string | null;
   completionDate: string | null;
   dueDate: string | null;
+  daysToComplete: number | null; // completionDate - orderDate
   revenue: number;
   invoiced: boolean;
   onTime: boolean | null;
@@ -172,17 +176,29 @@ export async function getCompletedRunsForWeek(weekStart: string): Promise<Drilld
   const weekEnd = addDays(weekStart, 7);
   const runs = await fetchCompletedRuns(config, weekStart, weekEnd);
 
-  return runs.map((r) => ({
-    id: r.id,
-    jobId: r.jobId,
-    customer: r.customer,
-    orderDate: r.orderDate,
-    completionDate: r.dateSentToInvoicing,
-    dueDate: r.dueDate,
-    revenue: r.revenue,
-    invoiced: r.invoiced,
-    onTime: r.dueDate && r.dateSentToInvoicing ? r.dateSentToInvoicing <= r.dueDate : null,
-  }));
+  return runs.map((r) => {
+    let daysToComplete: number | null = null;
+    if (r.orderDate && r.dateSentToInvoicing) {
+      const a = new Date(r.orderDate + 'T00:00:00').getTime();
+      const b = new Date(r.dateSentToInvoicing + 'T00:00:00').getTime();
+      daysToComplete = Math.round((b - a) / (1000 * 60 * 60 * 24));
+    }
+    return {
+      id: r.id,
+      jobId: r.jobId,
+      parentJob: r.parentJob,
+      partNumber: r.partNumber,
+      customer: r.customer,
+      customerName: r.customerName,
+      orderDate: r.orderDate,
+      completionDate: r.dateSentToInvoicing,
+      dueDate: r.dueDate,
+      daysToComplete,
+      revenue: r.revenue,
+      invoiced: r.invoiced,
+      onTime: r.dueDate && r.dateSentToInvoicing ? r.dateSentToInvoicing <= r.dueDate : null,
+    };
+  });
 }
 
 function addDays(isoDate: string, days: number): string {

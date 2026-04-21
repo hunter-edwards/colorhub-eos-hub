@@ -15,6 +15,7 @@
  *   field_972   due/promise date    e.g. "03/04/2026"
  *   field_961   revenue             e.g. "$7,032.80" (~70% fill rate)
  *   field_2292  dateSentToInvoicing e.g. "04/16/2026" (auto-set by rule when field_798→Yes)
+ *   field_510   customer name       e.g. "Harbor 3D LLC"
  */
 
 const KNACK_BASE = 'https://api.knack.com/v1';
@@ -30,6 +31,7 @@ export type KnackRun = {
   parentJob: string;   // field_534
   partNumber: string;  // field_535
   customer: string;    // field_1589
+  customerName: string; // field_510
   orderedQty: number;  // field_8
   shippedQty: number;  // field_561
   shipped: boolean;    // field_34
@@ -113,6 +115,7 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     parentJob: String(rec.field_534 ?? ''),
     partNumber: String(rec.field_535 ?? ''),
     customer: String(rec.field_1589 ?? ''),
+    customerName: String(rec.field_510 ?? ''),
     orderedQty: Number(rec.field_8) || 0,
     shippedQty: Number(rec.field_561) || 0,
     shipped: rec.field_34 === 'Yes',
