@@ -69,7 +69,7 @@ export async function dropIssue(issueId: string) {
   await requireUser();
   await db
     .update(issues)
-    .set({ status: 'dropped' })
+    .set({ status: 'dropped', droppedAt: new Date() })
     .where(eq(issues.id, issueId));
   revalidatePath('/issues');
 }

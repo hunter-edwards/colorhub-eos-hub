@@ -61,6 +61,22 @@ describe('buildAdaptiveCard', () => {
     expect(bodyStr).toContain('Alice');
     expect(bodyStr).toContain('Bob');
   });
+
+  it('includes a View full changelog action when meetingUrl provided', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary, 'https://app.example.com/meeting/history/abc-123');
+    const actions = card.attachments[0].content.actions;
+    expect(actions).toHaveLength(1);
+    expect(actions?.[0]).toMatchObject({
+      type: 'Action.OpenUrl',
+      title: 'View full changelog',
+      url: 'https://app.example.com/meeting/history/abc-123',
+    });
+  });
+
+  it('omits the action when meetingUrl is not provided', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    expect(card.attachments[0].content.actions).toBeUndefined();
+  });
 });
 
 describe('postToTeams', () => {

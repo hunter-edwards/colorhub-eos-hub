@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { getMeeting, getMeetingRatings, listHeadlines } from '@/server/meetings';
+import { getMeeting, getMeetingRatings, listHeadlines, getMeetingChangelog } from '@/server/meetings';
 import { UserAvatar } from '@/components/user-avatar';
 import { SummaryView } from './summary-view';
+import { MeetingChangelog } from './changelog';
 
 export default async function MeetingDetailPage({
   params,
@@ -11,10 +12,11 @@ export default async function MeetingDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [meeting, ratings, hdls] = await Promise.all([
+  const [meeting, ratings, hdls, changelog] = await Promise.all([
     getMeeting(id),
     getMeetingRatings(id),
     listHeadlines(id),
+    getMeetingChangelog(id),
   ]);
 
   if (!meeting) notFound();
@@ -50,6 +52,49 @@ export default async function MeetingDetailPage({
       </div>
 
       <SummaryView meetingId={id} summary={meeting.aiSummaryMd} />
+
+      {/* Headlines shared during the meeting */}
+      {hdls.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Headlines shared</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {(['customer', 'employee'] as const).map((kind) => {
+              const items = hdls.filter((h) => h.kind === kind);
+              if (items.length === 0) return null;
+              return (
+                <div key={kind} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {kind === 'customer' ? 'Customer' : 'Employee'}
+                  </h3>
+                  <ul className="space-y-1.5 text-sm">
+                    {items.map((h) => (
+                      <li key={h.id} className="flex items-start gap-2">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
+                        <span>
+                          {h.text}{' '}
+                          {h.authorName && (
+                            <span className="text-xs text-muted-foreground">— {h.authorName}</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Structured changelog of what changed during the meeting */}
+      {changelog && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            What changed
+          </h2>
+          <MeetingChangelog log={changelog} />
+        </section>
+      )}
 
       {/* Raw data */}
       <details className="text-sm">

@@ -78,7 +78,13 @@ export async function toggleTodo(todoId: string) {
     .where(eq(todos.id, todoId));
   if (!existing) return;
   const newStatus = existing.status === 'open' ? 'done' : 'open';
-  await db.update(todos).set({ status: newStatus }).where(eq(todos.id, todoId));
+  await db
+    .update(todos)
+    .set({
+      status: newStatus,
+      completedAt: newStatus === 'done' ? new Date() : null,
+    })
+    .where(eq(todos.id, todoId));
   revalidatePath('/todos');
 }
 
@@ -93,9 +99,10 @@ export async function carryOverTodo(todoId: string) {
   const newDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
+  // Re-opening clears completedAt so it isn't mis-counted as completed in the future.
   await db
     .update(todos)
-    .set({ dueDate: newDue, status: 'open' })
+    .set({ dueDate: newDue, status: 'open', completedAt: null })
     .where(eq(todos.id, todoId));
   revalidatePath('/todos');
 }

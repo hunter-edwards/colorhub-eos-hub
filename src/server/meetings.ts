@@ -1,8 +1,18 @@
 'use server';
 
 import { db } from '@/db';
-import { meetings, meetingRatings, headlines, users, teamSettings } from '@/db/schema';
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import {
+  meetings,
+  meetingRatings,
+  headlines,
+  users,
+  teamSettings,
+  issues,
+  todos,
+  rocks,
+  rockActivity,
+} from '@/db/schema';
+import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
@@ -61,7 +71,9 @@ export async function endMeeting(meetingId: string) {
     try {
       const [settings] = await db.select().from(teamSettings);
       if (settings?.teamsWebhookUrl) {
-        const result = await postToTeams(ctx, summary, settings.teamsWebhookUrl);
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+        const meetingUrl = siteUrl ? `${siteUrl}/meeting/history/${meetingId}` : undefined;
+        const result = await postToTeams(ctx, summary, settings.teamsWebhookUrl, meetingUrl);
         if (result.ok) {
           await db
             .update(meetings)
@@ -181,4 +193,158 @@ export async function listMeetings() {
     .select()
     .from(meetings)
     .orderBy(desc(meetings.startedAt));
+}
+
+// ── Meeting changelog ──────────────────────────────────────────────
+
+export type MeetingChangelog = {
+  startedAt: Date;
+  endedAt: Date | null;
+  issuesCreated: Array<{ id: string; title: string; list: 'short_term' | 'long_term'; ownerName: string | null }>;
+  issuesSolved: Array<{ id: string; title: string; ownerName: string | null }>;
+  issuesDropped: Array<{ id: string; title: string; ownerName: string | null }>;
+  todosCreated: Array<{ id: string; title: string; dueDate: string; ownerName: string | null }>;
+  todosCompleted: Array<{ id: string; title: string; ownerName: string | null }>;
+  rockEvents: Array<{
+    id: string;
+    rockId: string;
+    rockTitle: string;
+    actorName: string | null;
+    kind: 'status_change' | 'progress' | 'comment' | 'subtask' | 'mention';
+    payload: Record<string, unknown>;
+    createdAt: Date;
+  }>;
+};
+
+/**
+ * Aggregates everything that changed during a meeting so anyone who missed
+ * it can see exactly what happened: new/solved/dropped issues, to-dos
+ * created or completed, and every rock activity entry inside the meeting
+ * window.
+ *
+ * All queries are bounded by [meeting.startedAt, meeting.endedAt] so
+ * changes outside the meeting don't leak in.
+ */
+export async function getMeetingChangelog(meetingId: string): Promise<MeetingChangelog | null> {
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) return null;
+
+  const start = meeting.startedAt;
+  // If meeting is still live, use "now" as the window end so we see in-progress activity.
+  const end = meeting.endedAt ?? new Date();
+
+  const [
+    issuesCreatedRows,
+    issuesSolvedRows,
+    issuesDroppedRows,
+    todosCreatedRows,
+    todosCompletedRows,
+    rockEventRows,
+  ] = await Promise.all([
+    db
+      .select({
+        id: issues.id,
+        title: issues.title,
+        list: issues.list,
+        ownerName: users.name,
+      })
+      .from(issues)
+      .leftJoin(users, eq(issues.ownerId, users.id))
+      .where(and(gte(issues.createdAt, start), lte(issues.createdAt, end))),
+
+    db
+      .select({
+        id: issues.id,
+        title: issues.title,
+        ownerName: users.name,
+      })
+      .from(issues)
+      .leftJoin(users, eq(issues.ownerId, users.id))
+      .where(
+        and(
+          eq(issues.status, 'solved'),
+          gte(issues.solvedAt, start),
+          lte(issues.solvedAt, end)
+        )
+      ),
+
+    db
+      .select({
+        id: issues.id,
+        title: issues.title,
+        ownerName: users.name,
+      })
+      .from(issues)
+      .leftJoin(users, eq(issues.ownerId, users.id))
+      .where(
+        and(
+          eq(issues.status, 'dropped'),
+          gte(issues.droppedAt, start),
+          lte(issues.droppedAt, end)
+        )
+      ),
+
+    db
+      .select({
+        id: todos.id,
+        title: todos.title,
+        dueDate: todos.dueDate,
+        ownerName: users.name,
+      })
+      .from(todos)
+      .leftJoin(users, eq(todos.ownerId, users.id))
+      .where(
+        // Either explicitly sourced from this meeting, or created during the window
+        sql`(${todos.sourceMeetingId} = ${meetingId} OR (${todos.createdAt} >= ${start} AND ${todos.createdAt} <= ${end}))`
+      ),
+
+    db
+      .select({
+        id: todos.id,
+        title: todos.title,
+        ownerName: users.name,
+      })
+      .from(todos)
+      .leftJoin(users, eq(todos.ownerId, users.id))
+      .where(
+        and(
+          eq(todos.status, 'done'),
+          gte(todos.completedAt, start),
+          lte(todos.completedAt, end)
+        )
+      ),
+
+    db
+      .select({
+        id: rockActivity.id,
+        rockId: rockActivity.rockId,
+        rockTitle: rocks.title,
+        actorName: users.name,
+        kind: rockActivity.kind,
+        payload: rockActivity.payload,
+        createdAt: rockActivity.createdAt,
+      })
+      .from(rockActivity)
+      .leftJoin(rocks, eq(rockActivity.rockId, rocks.id))
+      .leftJoin(users, eq(rockActivity.actorId, users.id))
+      .where(
+        and(gte(rockActivity.createdAt, start), lte(rockActivity.createdAt, end))
+      )
+      .orderBy(rockActivity.createdAt),
+  ]);
+
+  return {
+    startedAt: start,
+    endedAt: meeting.endedAt,
+    issuesCreated: issuesCreatedRows,
+    issuesSolved: issuesSolvedRows,
+    issuesDropped: issuesDroppedRows,
+    todosCreated: todosCreatedRows,
+    todosCompleted: todosCompletedRows,
+    rockEvents: rockEventRows.map((r) => ({
+      ...r,
+      rockTitle: r.rockTitle ?? '(deleted rock)',
+      payload: (r.payload ?? {}) as Record<string, unknown>,
+    })),
+  };
 }

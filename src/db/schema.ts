@@ -67,6 +67,7 @@ export const todos = pgTable('todos', {
   status: todoStatus('status').notNull().default('open'),
   sourceMeetingId: uuid('source_meeting_id').references(() => meetings.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
 });
 
 export const issues = pgTable('issues', {
@@ -78,6 +79,7 @@ export const issues = pgTable('issues', {
   list: issueList('list').notNull().default('short_term'),
   status: issueStatus('status').notNull().default('open'),
   solvedAt: timestamp('solved_at'),
+  droppedAt: timestamp('dropped_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
