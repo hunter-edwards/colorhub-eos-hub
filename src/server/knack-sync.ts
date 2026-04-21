@@ -1,11 +1,15 @@
 'use server';
 
 import { db } from '@/db';
-import { scorecardMetrics, scorecardEntries, teamSettings } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { scorecardMetrics, scorecardEntries } from '@/db/schema';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import { fetchShippedRuns, computeWeeklyKPIs, type KnackConfig } from '@/lib/knack';
+import {
+  fetchCompletedRuns,
+  fetchRunsForParentJobs,
+  computeWeeklyKPIs,
+  type KnackConfig,
+} from '@/lib/knack';
 import { getWeekStarts } from '@/lib/scorecard-utils';
 
 async function requireUser() {
@@ -24,9 +28,10 @@ function getKnackConfig(): KnackConfig | null {
 
 /** Map of KPI name → scorecard metric name (must match what's in the DB). */
 const KPI_METRIC_MAP = {
-  parentJobsShipped: 'Parent Jobs Shipped',
+  runsCompleted: 'Runs Completed',
+  jobsCompleted: 'Jobs Completed',
   parentJobsInvoiced: 'Parent Jobs Invoiced',
-  avgDaysOrderToShip: 'Avg Days Order→Ship',
+  avgDaysOrderToComplete: 'Avg Days Order→Complete',
   onTimeDeliveryPct: 'On-Time Delivery %',
   weeklyRevenue: 'Weekly Revenue',
 } as const;
@@ -36,6 +41,10 @@ type KPIKey = keyof typeof KPI_METRIC_MAP;
 /**
  * Sync Knack data into the EOS scorecard for the last N weeks.
  * Creates metrics if they don't exist, then upserts weekly entries.
+ *
+ * A "completion" is when field_2292 (dateSentToInvoicing) on a run is
+ * populated. Parent jobs count as completed when every run for that
+ * parent job has field_2292 set.
  */
 export async function syncKnackToScorecard(weekCount = 13): Promise<{
   ok: boolean;
@@ -53,17 +62,18 @@ export async function syncKnackToScorecard(weekCount = 13): Promise<{
     const startDate = weeks[weeks.length - 1]; // earliest week
     const endDate = addDays(weeks[0], 7);       // end of current week
 
-    // Fetch all shipped runs in the date range
-    const runs = await fetchShippedRuns(config, startDate, endDate);
+    // 1. Runs completed in the window (field_2292 date in range)
+    const completedRuns = await fetchCompletedRuns(config, startDate, endDate);
 
-    // Compute weekly KPIs
-    const weeklyKPIs = computeWeeklyKPIs(runs, weeks);
+    // 2. For parent jobs touched by those runs, pull every run (any date)
+    //    so we can check if ALL runs across all parts are completed.
+    const parentJobs = [...new Set(completedRuns.map((r) => r.parentJob).filter(Boolean))];
+    const allJobRuns = await fetchRunsForParentJobs(config, parentJobs);
 
-    // Ensure scorecard metrics exist, get their IDs
+    const weeklyKPIs = computeWeeklyKPIs(completedRuns, allJobRuns, weeks);
+
     const metricIds = await ensureMetrics(user.id);
 
-    // Upsert entries
-    let updated = 0;
     for (const week of weeklyKPIs) {
       for (const [key, metricId] of Object.entries(metricIds)) {
         const kpiKey = key as KPIKey;
@@ -81,7 +91,6 @@ export async function syncKnackToScorecard(weekCount = 13): Promise<{
             target: [scorecardEntries.metricId, scorecardEntries.weekStart],
             set: { value: String(value) },
           });
-        updated++;
       }
     }
 
@@ -94,7 +103,7 @@ export async function syncKnackToScorecard(weekCount = 13): Promise<{
 }
 
 /**
- * Ensure the 5 Knack-sourced metrics exist in the scorecard.
+ * Ensure the 6 Knack-sourced metrics exist in the scorecard.
  * Returns a map of KPI key → metric UUID.
  */
 async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
@@ -102,9 +111,10 @@ async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
   const result: Partial<Record<KPIKey, string>> = {};
 
   const kpiConfigs: Record<KPIKey, { goal: string; comparator: 'gte' | 'lte'; unit: string }> = {
-    parentJobsShipped: { goal: '10', comparator: 'gte', unit: 'jobs' },
+    runsCompleted: { goal: '20', comparator: 'gte', unit: 'runs' },
+    jobsCompleted: { goal: '10', comparator: 'gte', unit: 'jobs' },
     parentJobsInvoiced: { goal: '10', comparator: 'gte', unit: 'jobs' },
-    avgDaysOrderToShip: { goal: '14', comparator: 'lte', unit: 'days' },
+    avgDaysOrderToComplete: { goal: '14', comparator: 'lte', unit: 'days' },
     onTimeDeliveryPct: { goal: '90', comparator: 'gte', unit: '%' },
     weeklyRevenue: { goal: '50000', comparator: 'gte', unit: '$' },
   };

@@ -42,38 +42,45 @@ const KPI_DEFINITIONS: Record<string, {
   color: string;
   chartType: 'bar' | 'line';
 }> = {
-  'Parent Jobs Shipped': {
-    description: 'Production KPI — count of parent jobs fully shipped per week.',
-    fields: 'field_34 (shipped flag), field_534 (parent job #), field_1589 (customer #), field_497 (planned ship date), field_2292 (dateSentToInvoicing)',
-    formula: 'Group runs by customer + parent job. A parent job counts as shipped when ALL its runs have field_34 = "Yes". Week = effective ship date (field_2292 ?? field_497) of the last run shipped.',
+  'Runs Completed': {
+    description: 'Production KPI — count of individual runs completed this week.',
+    fields: 'field_2292 (dateSentToInvoicing)',
+    formula: 'A run is "completed" when field_2292 has a valid date. Week = that date\'s ISO week (Mon–Sun). Result = count of runs completed in the week.',
     color: '#2563eb',
     chartType: 'bar',
   },
-  'Parent Jobs Invoiced': {
-    description: 'Financial KPI — count of parent jobs fully invoiced per week.',
-    fields: 'field_798 (invoiced flag), field_534 (parent job #), field_1589 (customer #), field_497 (planned ship date), field_2292 (dateSentToInvoicing)',
-    formula: 'Group runs by customer + parent job. A parent job counts as invoiced when ALL its runs have field_798 = "Yes". Week = effective ship date of the last run.',
+  'Jobs Completed': {
+    description: 'Production KPI — count of parent jobs fully completed this week.',
+    fields: 'field_2292 (dateSentToInvoicing), field_534 (parent job #), field_1589 (customer #), field_535 (part #)',
+    formula: 'Group runs by customer + parent job. A job counts as completed when EVERY run (across every part) has field_2292 set. Week = MAX(field_2292) across the job\'s runs.',
     color: '#16a34a',
     chartType: 'bar',
   },
-  'Avg Days Order\u2192Ship': {
-    description: 'Lead time KPI — average calendar days from order to ship.',
-    fields: 'field_969 (order received date), field_497 (planned ship date), field_2292 (dateSentToInvoicing)',
-    formula: 'For each run shipped that week: days = effectiveShipDate - orderDate. Result = average across all runs. Lower is better.',
+  'Parent Jobs Invoiced': {
+    description: 'Financial KPI — count of parent jobs fully invoiced this week.',
+    fields: 'field_798 (invoiced flag), field_534 (parent job #), field_1589 (customer #), field_2292 (dateSentToInvoicing)',
+    formula: 'Group runs by customer + parent job. A job counts as invoiced when ALL its runs have field_798 = "Yes". Week = MAX(field_2292) across the job\'s runs.',
+    color: '#0d9488',
+    chartType: 'bar',
+  },
+  'Avg Days Order\u2192Complete': {
+    description: 'Lead time KPI — average calendar days from order to completion.',
+    fields: 'field_969 (order received date), field_2292 (dateSentToInvoicing)',
+    formula: 'For each run completed this week: days = field_2292 - field_969. Result = average across all runs. Lower is better.',
     color: '#d97706',
     chartType: 'line',
   },
   'On-Time Delivery %': {
-    description: 'Service KPI — percentage of runs shipped on or before the due date.',
-    fields: 'field_972 (due/promise date), field_497 (planned ship date), field_2292 (dateSentToInvoicing)',
-    formula: 'For runs with a due date: on-time if effectiveShipDate <= dueDate. Result = (onTimeCount / totalWithDueDate) * 100.',
+    description: 'Service KPI — percentage of runs completed on or before the due date.',
+    fields: 'field_972 (due/promise date), field_2292 (dateSentToInvoicing)',
+    formula: 'For runs with a due date: on-time if field_2292 <= field_972. Result = (onTimeCount / totalWithDueDate) * 100.',
     color: '#9333ea',
     chartType: 'line',
   },
   'Weekly Revenue': {
-    description: 'Revenue KPI — total revenue from runs shipped that week.',
-    fields: 'field_961 (revenue $), field_497 (planned ship date), field_2292 (dateSentToInvoicing)',
-    formula: 'Sum of field_961 (parsed from "$X,XXX.XX" format) for all runs with an effective ship date in the week. ~70% fill rate on this field.',
+    description: 'Revenue KPI — total revenue from runs completed this week.',
+    fields: 'field_961 (revenue $), field_2292 (dateSentToInvoicing)',
+    formula: 'Sum of field_961 (parsed from "$X,XXX.XX" format) for all runs with field_2292 in the week. ~70% fill rate on this field.',
     color: '#0891b2',
     chartType: 'bar',
   },
