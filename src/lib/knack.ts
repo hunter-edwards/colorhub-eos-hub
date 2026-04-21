@@ -139,24 +139,43 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
  *
  * Paginates automatically (Knack max 1000/page).
  */
+// The Knack rule's retroactive fire stamped ~21k records at this moment.
+// Fetching them all would return thousands of records we'd then discard in
+// JS. We split the window around this boundary so Knack never returns them.
+const BULK_STAMP_BOUNDARY = '04/21/2026 7:49am';
+const BULK_STAMP_DATE = '04/21/2026';
+
 export async function fetchCompletedRuns(
   config: KnackConfig,
   startDate: string,  // ISO YYYY-MM-DD
   endDate: string     // ISO YYYY-MM-DD
 ): Promise<KnackRun[]> {
-  // Convert ISO dates to Knack format MM/DD/YYYY
   const start = toKnackDate(startDate);
   const end = toKnackDate(endDate);
 
-  const filters = JSON.stringify([
-    { field: 'field_2292', operator: 'is after', value: start },
-    { field: 'field_2292', operator: 'is before', value: end },
+  // Two queries bracketing the bulk-stamp moment:
+  //   1. real invoicings BEFORE 04/21/2026 (exclusive)
+  //   2. real invoicings AFTER 04/21/2026 7:49am
+  // Combined, these skip the 21k bulk-stamped records at the Knack level.
+  const [before, after] = await Promise.all([
+    paginate(
+      config,
+      JSON.stringify([
+        { field: 'field_2292', operator: 'is after', value: start },
+        { field: 'field_2292', operator: 'is before', value: BULK_STAMP_DATE },
+      ])
+    ),
+    paginate(
+      config,
+      JSON.stringify([
+        { field: 'field_2292', operator: 'is after', value: BULK_STAMP_BOUNDARY },
+        { field: 'field_2292', operator: 'is before', value: end },
+      ])
+    ),
   ]);
 
-  // Parser strips the bulk-stamp artifact (returns null), so some records
-  // may come back with dateSentToInvoicing = null. Drop those here so the
-  // rest of the pipeline can assume completedRuns are really completed.
-  const all = await paginate(config, filters);
+  const all = [...before, ...after];
+  // Defense in depth: parser also discards bulk-stamp artifacts.
   return all.filter((r) => r.dateSentToInvoicing !== null);
 }
 
