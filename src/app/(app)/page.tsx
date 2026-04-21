@@ -4,12 +4,11 @@ import { listRocks } from '@/server/rocks';
 import { listMyTodos } from '@/server/todos';
 import { listMetrics, listEntries } from '@/server/scorecard';
 import { listMeetings } from '@/server/meetings';
+import { getIssuesTrend } from '@/server/issues';
 import { currentQuarter } from '@/lib/quarters';
 import { getWeekStarts, evaluateEntry } from '@/lib/scorecard-utils';
 import Link from 'next/link';
-import { ScorecardChart } from '@/components/charts/scorecard-chart';
-import { MeetingChart } from '@/components/charts/meeting-chart';
-import { RockChart } from '@/components/charts/rock-chart';
+import { DashboardTrends } from './dashboard-trends';
 import { ArrowRight, TrendingUp, Target, CheckSquare, Calendar } from 'lucide-react';
 
 function formatShortDate(d: Date): string {
@@ -30,13 +29,14 @@ export default async function DashboardPage() {
   const quarter = currentQuarter();
   const [weekStart] = getWeekStarts(1);
 
-  const [allRocks, myTodos, metrics, entries, trendEntries, allMeetings] = await Promise.all([
+  const [allRocks, myTodos, metrics, entries, trendEntries, allMeetings, issuesTrend] = await Promise.all([
     listRocks(quarter),
     listMyTodos(),
     listMetrics(),
     listEntries(weekStart, 1),
     listEntries(weekStart, 13),
     listMeetings(),
+    getIssuesTrend(13),
   ]);
 
   const myRocks = allRocks.filter((r) => r.ownerId === user?.id);
@@ -49,29 +49,24 @@ export default async function DashboardPage() {
     return { ...m, value: val, color };
   });
 
-  // Chart data: scorecard trend entries
-  const metricNameMap = new Map(metrics.map((m) => [m.id, m.name]));
-  const scorecardChartData = trendEntries.map((e) => ({
-    metricId: e.metricId,
-    metricName: metricNameMap.get(e.metricId) ?? 'Unknown',
-    weekStart: e.weekStart,
-    value: e.value != null ? Number(e.value) : null,
-  }));
+  // Trend data for Knack-sourced KPIs — one tile each, single y-axis
+  const trendWeeks = getWeekStarts(13).slice().reverse(); // oldest → newest
+  function trendFor(metricName: string) {
+    const m = metrics.find((x) => x.name === metricName);
+    if (!m) return { data: trendWeeks.map((w) => ({ weekStart: w, value: null as number | null })), goal: null };
+    const byWeek = new Map(
+      trendEntries
+        .filter((e) => e.metricId === m.id)
+        .map((e) => [e.weekStart, e.value != null ? Number(e.value) : null])
+    );
+    const data = trendWeeks.map((w) => ({ weekStart: w, value: byWeek.get(w) ?? null }));
+    const goal = m.goal != null ? Number(m.goal) : null;
+    return { data, goal };
+  }
 
-  // Chart data: meeting ratings (last 10 completed meetings with ratings)
-  const meetingChartData = allMeetings
-    .filter((m) => m.endedAt && m.ratingAvg != null)
-    .slice(0, 10)
-    .map((m) => ({
-      date: m.startedAt.toISOString().slice(0, 10),
-      rating: Number(m.ratingAvg),
-    }));
-
-  // Chart data: rock status distribution
-  const rockStatusCounts = (['on_track', 'off_track', 'done'] as const).map((status) => ({
-    status,
-    count: allRocks.filter((r) => r.status === status).length,
-  }));
+  const revenue = trendFor('Weekly Revenue');
+  const onTime = trendFor('On-Time Delivery %');
+  const jobs = trendFor('Jobs Completed');
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -295,29 +290,15 @@ export default async function DashboardPage() {
           <span className="text-xs text-muted-foreground">Last 13 weeks</span>
         </div>
         <div className="grid gap-5 md:grid-cols-2">
-          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold tracking-tight">Scorecard trend</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">All metrics, 13 weeks</p>
-            <div className="mt-4">
-              <ScorecardChart entries={scorecardChartData} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold tracking-tight">Meeting ratings</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">Last 10 L10s</p>
-            <div className="mt-4">
-              <MeetingChart meetings={meetingChartData} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold tracking-tight">Rock status</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">{quarter}</p>
-            <div className="mt-4">
-              <RockChart rocks={rockStatusCounts} />
-            </div>
-          </div>
+          <DashboardTrends
+            revenueTrend={revenue.data}
+            revenueGoal={revenue.goal}
+            onTimeTrend={onTime.data}
+            onTimeGoal={onTime.goal}
+            jobsTrend={jobs.data}
+            jobsGoal={jobs.goal}
+            issuesTrend={issuesTrend}
+          />
 
           <Link
             href="/quarterly-review"
