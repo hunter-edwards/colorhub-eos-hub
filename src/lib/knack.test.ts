@@ -8,6 +8,7 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
     parentJob: '19000',
     partNumber: '1',
     customer: '036',
+    customerName: 'Acme Co',
     orderedQty: 100,
     shippedQty: 100,
     shipped: true,
