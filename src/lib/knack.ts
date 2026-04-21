@@ -94,10 +94,20 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
 }
 
 /**
- * Fetch all shipped runs within a date range (by ship date field_497).
+ * Fetch all completed runs within a date range.
+ *
+ * "Completed" = field_2292 (dateSentToInvoicing) has a valid date.
+ * Knack's "is after" / "is before" filters on a date field naturally
+ * exclude records where that field is blank, so we don't need an
+ * explicit "is not blank" clause.
+ *
+ * To fully evaluate "Jobs Completed" (all runs across all parts have
+ * field_2292 set), callers also need runs OUTSIDE the window — fetched
+ * separately via fetchRunsForParentJobs().
+ *
  * Paginates automatically (Knack max 1000/page).
  */
-export async function fetchShippedRuns(
+export async function fetchCompletedRuns(
   config: KnackConfig,
   startDate: string,  // ISO YYYY-MM-DD
   endDate: string     // ISO YYYY-MM-DD
@@ -107,11 +117,36 @@ export async function fetchShippedRuns(
   const end = toKnackDate(endDate);
 
   const filters = JSON.stringify([
-    { field: 'field_34', operator: 'is', value: 'Yes' },
-    { field: 'field_497', operator: 'is after', value: start },
-    { field: 'field_497', operator: 'is before', value: end },
+    { field: 'field_2292', operator: 'is after', value: start },
+    { field: 'field_2292', operator: 'is before', value: end },
   ]);
 
+  return paginate(config, filters);
+}
+
+/**
+ * Fetch every run for a given set of parent job numbers (any customer).
+ * Used to determine if ALL runs for a parent job are completed, since
+ * some of them may fall outside the completion-date window.
+ */
+export async function fetchRunsForParentJobs(
+  config: KnackConfig,
+  parentJobs: string[]
+): Promise<KnackRun[]> {
+  if (parentJobs.length === 0) return [];
+
+  // Knack "or" with multiple equality filters
+  const rules = parentJobs.map((pj) => ({
+    field: 'field_534',
+    operator: 'is',
+    value: pj,
+  }));
+  const filters = JSON.stringify({ match: 'or', rules });
+
+  return paginate(config, filters);
+}
+
+async function paginate(config: KnackConfig, filters: string): Promise<KnackRun[]> {
   const allRuns: KnackRun[] = [];
   let page = 1;
   let totalPages = 1;
@@ -137,39 +172,45 @@ function toKnackDate(iso: string): string {
   return `${mm}/${dd}/${yyyy}`;
 }
 
-/** Actual ship date: prefer dateSentToInvoicing (when available), fall back to planned shipDate. */
-function effectiveShipDate(r: KnackRun): string | null {
-  return r.dateSentToInvoicing ?? r.shipDate;
-}
-
 // ── KPI calculations ───────────────────────────────────────────────
 
 export type WeeklyKPIs = {
   weekStart: string;  // ISO date (Monday)
-  parentJobsShipped: number;
+  runsCompleted: number;
+  jobsCompleted: number;
   parentJobsInvoiced: number;
-  avgDaysOrderToShip: number | null;
+  avgDaysOrderToComplete: number | null;
   onTimeDeliveryPct: number | null;
   weeklyRevenue: number;
 };
 
 /**
- * Given a set of shipped runs, compute weekly KPIs.
- * Groups runs into ISO weeks (Mon–Sun).
+ * Compute weekly KPIs using field_2292 (dateSentToInvoicing) as the
+ * canonical "completion" signal. Runs are grouped into ISO weeks (Mon–Sun)
+ * by their completion date.
+ *
+ * @param completedRuns runs that fell in the overall window (completed in it)
+ * @param allJobRuns    every run for the parent jobs touched by completedRuns.
+ *                      Needed to verify that ALL runs across ALL parts are complete.
+ * @param weekStarts    ISO Monday dates (one bucket per week)
  */
-export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): WeeklyKPIs[] {
+export function computeWeeklyKPIs(
+  completedRuns: KnackRun[],
+  allJobRuns: KnackRun[],
+  weekStarts: string[]
+): WeeklyKPIs[] {
   return weekStarts.map((weekStart) => {
     const weekEnd = addDays(weekStart, 7);
-    const weekRuns = runs.filter((r) => {
-      const sd = effectiveShipDate(r);
-      return sd && sd >= weekStart && sd < weekEnd;
-    });
+    const weekRuns = completedRuns.filter(
+      (r) => r.dateSentToInvoicing && r.dateSentToInvoicing >= weekStart && r.dateSentToInvoicing < weekEnd
+    );
 
     return {
       weekStart,
-      parentJobsShipped: countParentJobsByFlag(weekRuns, runs, 'shipped'),
-      parentJobsInvoiced: countParentJobsByFlag(weekRuns, runs, 'invoiced'),
-      avgDaysOrderToShip: avgDaysOrderToShip(weekRuns),
+      runsCompleted: weekRuns.length,
+      jobsCompleted: countJobsCompleted(weekRuns, allJobRuns),
+      parentJobsInvoiced: countParentJobsInvoiced(weekRuns, allJobRuns),
+      avgDaysOrderToComplete: avgDaysOrderToComplete(weekRuns),
       onTimeDeliveryPct: onTimeDeliveryPct(weekRuns),
       weeklyRevenue: weekRuns.reduce((sum, r) => sum + r.revenue, 0),
     };
@@ -177,19 +218,12 @@ export function computeWeeklyKPIs(runs: KnackRun[], weekStarts: string[]): Weekl
 }
 
 /**
- * Count parent jobs where ALL runs have a given flag set.
+ * Count parent jobs completed in the week.
  *
- * "shipped": all runs have field_34=Yes (production KPI)
- * "invoiced": all runs have field_798=Yes (financial KPI)
- *
- * The parent job's week = week containing the MAX ship date across all
- * its runs (the week the last run was shipped).
+ * A parent job is "completed" when every run (across every part) has
+ * field_2292 set. Its week = MAX(field_2292) across those runs.
  */
-function countParentJobsByFlag(
-  weekRuns: KnackRun[],
-  allRuns: KnackRun[],
-  flag: 'shipped' | 'invoiced'
-): number {
+function countJobsCompleted(weekRuns: KnackRun[], allJobRuns: KnackRun[]): number {
   const parentJobsThisWeek = new Set(
     weekRuns
       .filter((r) => r.parentJob)
@@ -200,26 +234,62 @@ function countParentJobsByFlag(
 
   for (const pjKey of parentJobsThisWeek) {
     const [customer, parentJob] = pjKey.split('_');
-    const allJobRuns = allRuns.filter(
+    const runsForJob = allJobRuns.filter(
       (r) => r.customer === customer && r.parentJob === parentJob
     );
 
-    const allFlagged = allJobRuns.every((r) => r[flag]);
-    if (!allFlagged) continue;
+    // Every run must be completed
+    const allCompleted = runsForJob.length > 0 && runsForJob.every((r) => r.dateSentToInvoicing);
+    if (!allCompleted) continue;
 
-    const completionDate = allJobRuns.reduce(
-      (max, r) => {
-        const sd = effectiveShipDate(r);
-        return sd && sd > max ? sd : max;
-      },
+    // Parent job's completion week = week containing MAX(dateSentToInvoicing)
+    const maxDate = runsForJob.reduce(
+      (max, r) => (r.dateSentToInvoicing && r.dateSentToInvoicing > max ? r.dateSentToInvoicing : max),
       ''
     );
-    if (!completionDate) continue;
+    if (!maxDate) continue;
 
-    if (weekRuns.some((r) => {
-      const sd = effectiveShipDate(r);
-      return sd && getWeekStartForDate(sd) === getWeekStartForDate(completionDate);
-    })) {
+    if (weekRuns.some(
+      (r) => r.dateSentToInvoicing && getWeekStartForDate(r.dateSentToInvoicing) === getWeekStartForDate(maxDate)
+    )) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Financial KPI: parent jobs where ALL runs have field_798=Yes (invoiced flag).
+ * Week = MAX(dateSentToInvoicing) across the job's runs.
+ */
+function countParentJobsInvoiced(weekRuns: KnackRun[], allJobRuns: KnackRun[]): number {
+  const parentJobsThisWeek = new Set(
+    weekRuns
+      .filter((r) => r.parentJob)
+      .map((r) => `${r.customer}_${r.parentJob}`)
+  );
+
+  let count = 0;
+
+  for (const pjKey of parentJobsThisWeek) {
+    const [customer, parentJob] = pjKey.split('_');
+    const runsForJob = allJobRuns.filter(
+      (r) => r.customer === customer && r.parentJob === parentJob
+    );
+
+    const allInvoiced = runsForJob.length > 0 && runsForJob.every((r) => r.invoiced);
+    if (!allInvoiced) continue;
+
+    const maxDate = runsForJob.reduce(
+      (max, r) => (r.dateSentToInvoicing && r.dateSentToInvoicing > max ? r.dateSentToInvoicing : max),
+      ''
+    );
+    if (!maxDate) continue;
+
+    if (weekRuns.some(
+      (r) => r.dateSentToInvoicing && getWeekStartForDate(r.dateSentToInvoicing) === getWeekStartForDate(maxDate)
+    )) {
       count++;
     }
   }
@@ -235,14 +305,13 @@ function getWeekStartForDate(isoDate: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function avgDaysOrderToShip(runs: KnackRun[]): number | null {
+function avgDaysOrderToComplete(runs: KnackRun[]): number | null {
   const diffs: number[] = [];
   for (const r of runs) {
-    const sd = effectiveShipDate(r);
-    if (r.orderDate && sd) {
+    if (r.orderDate && r.dateSentToInvoicing) {
       const order = new Date(r.orderDate + 'T00:00:00');
-      const ship = new Date(sd + 'T00:00:00');
-      diffs.push((ship.getTime() - order.getTime()) / (1000 * 60 * 60 * 24));
+      const complete = new Date(r.dateSentToInvoicing + 'T00:00:00');
+      diffs.push((complete.getTime() - order.getTime()) / (1000 * 60 * 60 * 24));
     }
   }
   if (diffs.length === 0) return null;
@@ -250,9 +319,9 @@ function avgDaysOrderToShip(runs: KnackRun[]): number | null {
 }
 
 function onTimeDeliveryPct(runs: KnackRun[]): number | null {
-  const withDue = runs.filter((r) => r.dueDate && effectiveShipDate(r));
+  const withDue = runs.filter((r) => r.dueDate && r.dateSentToInvoicing);
   if (withDue.length === 0) return null;
-  const onTime = withDue.filter((r) => effectiveShipDate(r)! <= r.dueDate!).length;
+  const onTime = withDue.filter((r) => r.dateSentToInvoicing! <= r.dueDate!).length;
   return Math.round((onTime / withDue.length) * 1000) / 10;
 }
 
