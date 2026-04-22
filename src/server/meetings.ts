@@ -346,7 +346,6 @@ export async function listMeetings() {
   return db
     .select()
     .from(meetings)
-    .where(eq(meetings.status, 'concluded'))
     .orderBy(desc(meetings.startedAt));
 }
 
