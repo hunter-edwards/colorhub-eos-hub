@@ -244,6 +244,19 @@ Shipped the meeting-workflow upgrade plan at `docs/plans/2026-04-21-meeting-work
 
 **Migrations:** 0008 (user role), 0009 (issues.source_metric_id), 0010 (meeting status + backfill), 0011 (meeting_rsvps with `(meeting_id, user_id)` unique). 0010/0011 applied manually via node `postgres` driver after `drizzle-kit migrate` hung on the existing DB connection — prefer that fallback when migrate stalls.
 
+## Prod incident (2026-04-22) — migration drift
+
+`/meeting/upcoming` returned a 500 in prod right after PR #25 shipped. Root cause: `getCurrentUserRole()` queries `users.role`, but migration `0008_add_user_role.sql` had never run on the prod DB. `0009_add_issue_source_metric.sql` was also missing (would have broken scorecard→issue creation in the next live meeting). 0010/0011 were applied manually but never recorded in `drizzle.__drizzle_migrations`, so the journal was out of sync with reality and `drizzle-kit migrate` would have tried to re-run everything.
+
+Fix applied directly against prod:
+- Ran 0008 + 0009 SQL (both are additive — enum + columns + FK, no data loss).
+- Promoted `h.edwards.327@gmail.com` to `admin`; everyone else defaults to `member`. Grant `leader` to meeting runners as needed: `UPDATE users SET role='leader' WHERE email IN (...)`.
+- Reconciled `drizzle.__drizzle_migrations`: inserted the 6 missing rows (0006, 0007_add_meeting_timestamps, 0008, 0009, 0010, 0011) using `sha256(fileContents)` as the hash — matches drizzle's `readMigrationFiles` algorithm.
+
+**Lesson:** manual SQL without touching the journal silently drifts the schema away from what drizzle thinks is applied. When `drizzle-kit migrate` hangs, the fallback must be: apply the SQL **and** insert the corresponding `drizzle.__drizzle_migrations` row in the same transaction. Script template lives in `scripts/` next time we need it.
+
+**Still an orphan:** `drizzle/0007_performance-indexes.sql` exists as a file but isn't in `meta/_journal.json`, so drizzle-kit ignores it. The indexes inside it (`idx_core_values_team`, etc.) are likely present from a one-off manual apply. Either fold the statements into a new tracked migration or delete the orphan — don't leave it dangling.
+
 **Test coverage:** 108 Vitest tests across 11 files. `auth.test.ts` (6), `carry-over.test.ts` (5), `issues.test.ts` (2), `teams-webhook.test.ts` (17) added in this round. E2E smoke at `tests/e2e/happy-path.spec.ts`.
 
 **Gotchas worth remembering:**
