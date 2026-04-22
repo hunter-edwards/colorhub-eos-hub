@@ -31,7 +31,10 @@ export function getWeekStarts(count: number): string[] {
   const now = new Date();
   const dayOfWeek = now.getDay();
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  // Shift back to the Monday of the *previous* completed week — we meet on
+  // Wednesdays, so "this week" in the app always refers to the most recent
+  // Mon–Fri that actually finished.
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7) - 7);
   monday.setHours(0, 0, 0, 0);
 
   const weeks: string[] = [];

@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
-import { listRocks, updateRockStatus } from '@/server/rocks';
+import { Input } from '@/components/ui/input';
+import { Plus } from 'lucide-react';
+import { createRock, listRocks, listTeamMembers, updateRockStatus } from '@/server/rocks';
 import { createIssue } from '@/server/issues';
 import { UserAvatar } from '@/components/user-avatar';
 import { currentQuarter } from '@/lib/quarters';
@@ -19,6 +20,8 @@ type Rock = {
   ownerId: string;
 };
 
+type Member = { id: string; name: string | null; email: string };
+
 const STATUS_BADGE = {
   on_track: { label: 'On Track', variant: 'default' as const },
   off_track: { label: 'Off Track', variant: 'destructive' as const },
@@ -27,10 +30,17 @@ const STATUS_BADGE = {
 
 export function RockReviewPanel({ meetingId }: { meetingId: string }) {
   const [rocks, setRocks] = useState<Rock[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [newTitle, setNewTitle] = useState('');
+  const [newOwner, setNewOwner] = useState('');
+  const [adding, setAdding] = useState(false);
   const quarter = currentQuarter();
 
   useEffect(() => {
-    listRocks(quarter).then(setRocks);
+    Promise.all([listRocks(quarter), listTeamMembers()]).then(([r, m]) => {
+      setRocks(r);
+      setMembers(m);
+    });
   }, [quarter]);
 
   async function toggle(rock: Rock, newStatus: 'on_track' | 'off_track' | 'done') {
@@ -45,8 +55,50 @@ export function RockReviewPanel({ meetingId }: { meetingId: string }) {
     setRocks(updated);
   }
 
+  async function handleAddRock(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.trim() || !newOwner || adding) return;
+    setAdding(true);
+    await createRock({
+      title: newTitle.trim(),
+      ownerId: newOwner,
+      quarter,
+    });
+    setNewTitle('');
+    setNewOwner('');
+    setAdding(false);
+    setRocks(await listRocks(quarter));
+  }
+
   return (
     <div className="space-y-2">
+      <form onSubmit={handleAddRock} className="flex gap-2 items-center pb-2">
+        <Input
+          placeholder={`Add rock for ${quarter}...`}
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          className="flex-1"
+        />
+        <select
+          value={newOwner}
+          onChange={(e) => setNewOwner(e.target.value)}
+          className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+        >
+          <option value="">Owner...</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name || m.email}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={adding || !newTitle.trim() || !newOwner}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </form>
       {rocks.length === 0 && (
         <p className="text-sm text-muted-foreground py-4 text-center">No rocks this quarter.</p>
       )}

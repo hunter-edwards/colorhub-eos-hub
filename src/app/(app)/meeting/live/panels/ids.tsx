@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { CheckCircle, Plus } from 'lucide-react';
 import { listIssues, solveIssue, createIssue } from '@/server/issues';
 import { createTodo } from '@/server/todos';
@@ -26,6 +25,9 @@ export function IDSPanel({ meetingId }: { meetingId: string }) {
   const [discussing, setDiscussing] = useState<string | null>(null);
   const [todoTitle, setTodoTitle] = useState('');
   const [todoOwner, setTodoOwner] = useState('');
+  const [newIssueTitle, setNewIssueTitle] = useState('');
+  const [newIssueOwner, setNewIssueOwner] = useState('');
+  const [addingIssue, setAddingIssue] = useState(false);
 
   useEffect(() => {
     Promise.all([listIssues(), listTeamMembers()]).then(([i, m]) => {
@@ -38,6 +40,20 @@ export function IDSPanel({ meetingId }: { meetingId: string }) {
     setIssues(await listIssues());
   }
 
+  async function handleAddIssue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newIssueTitle.trim() || addingIssue) return;
+    setAddingIssue(true);
+    await createIssue({
+      title: newIssueTitle.trim(),
+      ownerId: newIssueOwner || undefined,
+    });
+    setNewIssueTitle('');
+    setNewIssueOwner('');
+    setAddingIssue(false);
+    await refresh();
+  }
+
   const active = issues.find((i) => i.id === discussing);
 
   return (
@@ -47,6 +63,33 @@ export function IDSPanel({ meetingId }: { meetingId: string }) {
         <p className="text-xs text-muted-foreground">
           Identify, Discuss, Solve — click an issue to discuss.
         </p>
+        <form onSubmit={handleAddIssue} className="flex gap-2 items-center">
+          <Input
+            placeholder="Add issue..."
+            value={newIssueTitle}
+            onChange={(e) => setNewIssueTitle(e.target.value)}
+            className="flex-1"
+          />
+          <select
+            value={newIssueOwner}
+            onChange={(e) => setNewIssueOwner(e.target.value)}
+            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          >
+            <option value="">Owner...</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name || m.email}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={addingIssue || !newIssueTitle.trim()}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </form>
         {issues.map((issue) => (
           <div
             key={issue.id}

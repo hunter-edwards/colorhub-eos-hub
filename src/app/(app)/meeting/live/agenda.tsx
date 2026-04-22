@@ -29,11 +29,13 @@ export function Agenda({
   startedAt,
   canLead,
   canAdmin,
+  isAttendee,
 }: {
   meetingId: string;
   startedAt: Date;
   canLead: boolean;
   canAdmin: boolean;
+  isAttendee: boolean;
 }) {
   const [active, setActive] = useState<SectionKey>('segue');
   const section = SECTIONS.find((s) => s.key === active)!;
@@ -111,14 +113,19 @@ export function Agenda({
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          {active === 'segue' && <SeguePanel meetingId={meetingId} />}
+          {active === 'segue' && <SeguePanel />}
           {active === 'scorecard' && <ScorecardPanel meetingId={meetingId} />}
           {active === 'rocks' && <RockReviewPanel meetingId={meetingId} />}
           {active === 'headlines' && <HeadlinesPanel meetingId={meetingId} />}
           {active === 'todos' && <TodoReviewPanel meetingId={meetingId} />}
           {active === 'ids' && <IDSPanel meetingId={meetingId} />}
           {active === 'conclude' && (
-            <ConcludePanel meetingId={meetingId} canLead={canLead} canAdmin={canAdmin} />
+            <ConcludePanel
+              meetingId={meetingId}
+              canLead={canLead}
+              canAdmin={canAdmin}
+              isAttendee={isAttendee}
+            />
           )}
         </div>
       </div>
