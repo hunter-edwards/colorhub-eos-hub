@@ -2,6 +2,14 @@ import { db } from '@/db';
 import { users, teams } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
+export type UserRole = 'admin' | 'leader' | 'member';
+
+const RANK: Record<UserRole, number> = { member: 0, leader: 1, admin: 2 };
+
+export function atLeast(userRole: UserRole, required: UserRole): boolean {
+  return RANK[userRole] >= RANK[required];
+}
+
 export async function upsertUser(authUser: { id: string; email: string }) {
   const existing = await db.select().from(users).where(eq(users.id, authUser.id));
   if (existing.length) return existing[0];

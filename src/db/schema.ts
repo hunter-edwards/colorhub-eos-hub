@@ -7,6 +7,8 @@ export const teams = pgTable('teams', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userRole = pgEnum('user_role', ['admin', 'leader', 'member']);
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(), // matches auth.users.id from Supabase Auth
   teamId: uuid('team_id').references(() => teams.id),
@@ -14,6 +16,7 @@ export const users = pgTable('users', {
   name: text('name'),
   avatarUrl: text('avatar_url'),
   profileColor: text('profile_color'),
+  role: userRole('role').notNull().default('member'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
