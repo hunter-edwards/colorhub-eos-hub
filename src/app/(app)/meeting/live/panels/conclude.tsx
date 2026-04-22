@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { endMeeting, rateMeeting, getMeetingRatings } from '@/server/meetings';
+import { endMeeting, rateMeeting, getMeetingRatings, setCascadingMessage, getMeeting } from '@/server/meetings';
 import { useRouter } from 'next/navigation';
 
 type Rating = {
@@ -22,6 +22,9 @@ export function ConcludePanel({ meetingId, canLead = false }: { meetingId: strin
 
   useEffect(() => {
     getMeetingRatings(meetingId).then(setRatings);
+    getMeeting(meetingId).then((m) => {
+      if (m?.cascadingMessage) setCascading(m.cascadingMessage);
+    });
   }, [meetingId]);
 
   const avg =
@@ -43,7 +46,11 @@ export function ConcludePanel({ meetingId, canLead = false }: { meetingId: strin
           placeholder="Key message to cascade to your teams..."
           value={cascading}
           onChange={(e) => setCascading(e.target.value)}
+          onBlur={() => {
+            if (canLead) void setCascadingMessage(meetingId, cascading);
+          }}
           rows={3}
+          disabled={!canLead}
         />
       </div>
 

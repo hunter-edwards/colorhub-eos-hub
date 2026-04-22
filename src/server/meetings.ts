@@ -183,6 +183,15 @@ export async function joinMeeting(meetingId: string) {
   revalidatePath('/meeting/live');
 }
 
+export async function setCascadingMessage(meetingId: string, text: string) {
+  await requireRole('leader');
+  await db
+    .update(meetings)
+    .set({ cascadingMessage: text })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
 export async function rateMeeting(meetingId: string, rating: number) {
   const user = await requireUser();
   await db

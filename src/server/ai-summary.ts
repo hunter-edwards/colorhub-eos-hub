@@ -118,7 +118,7 @@ export async function collectMeetingContext(meetingId: string): Promise<MeetingC
       owner: t.ownerName || t.ownerEmail || '',
       dueDate: t.dueDate,
     })),
-    cascadingMessage: '',
+    cascadingMessage: meeting.cascadingMessage ?? '',
   };
 }
 
