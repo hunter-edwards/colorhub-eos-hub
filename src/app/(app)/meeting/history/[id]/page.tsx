@@ -1,10 +1,13 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Megaphone } from 'lucide-react';
 import { getMeeting, getMeetingRatings, listHeadlines, getMeetingChangelog } from '@/server/meetings';
+import { collectMeetingContext } from '@/server/ai-summary';
 import { UserAvatar } from '@/components/user-avatar';
 import { SummaryView } from './summary-view';
 import { MeetingChangelog } from './changelog';
+
+type Attendee = { id?: string; name?: string | null; email?: string };
 
 export default async function MeetingDetailPage({
   params,
@@ -12,19 +15,26 @@ export default async function MeetingDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [meeting, ratings, hdls, changelogResult] = await Promise.all([
+  const [meeting, ratings, hdls, changelog, context] = await Promise.all([
     getMeeting(id),
     getMeetingRatings(id),
     listHeadlines(id),
-    // Don't 500 the whole page if changelog query blows up — just hide the section.
     getMeetingChangelog(id).catch((e) => {
       console.error('getMeetingChangelog failed:', e);
       return null;
     }),
+    collectMeetingContext(id).catch((e) => {
+      console.error('collectMeetingContext failed:', e);
+      return null;
+    }),
   ]);
-  const changelog = changelogResult;
 
   if (!meeting) notFound();
+
+  const attendees = (meeting.attendees ?? []) as Attendee[];
+  const ratingByUser = new Map(ratings.map((r) => [r.userId, r.rating]));
+  const scorecardReds = context?.scorecardReds ?? [];
+  const cascadingMessage = meeting.cascadingMessage?.trim();
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -57,6 +67,69 @@ export default async function MeetingDetailPage({
       </div>
 
       <SummaryView meetingId={id} summary={meeting.aiSummaryMd} />
+
+      {/* Meeting Health */}
+      <section className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Meeting Health
+        </h2>
+        <div className="flex items-start gap-10">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Avg rating</div>
+            <div className="text-3xl font-bold tabular-nums">
+              {meeting.ratingAvg ?? '–'}
+              <span className="text-base font-normal text-muted-foreground">/10</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Attendees</div>
+            <div className="text-3xl font-bold tabular-nums">{attendees.length}</div>
+          </div>
+        </div>
+        {attendees.length > 0 && (
+          <ul className="mt-4 flex flex-wrap gap-2">
+            {attendees.map((a, idx) => {
+              const displayName = a.name || a.email || 'Unknown';
+              const r = a.id ? ratingByUser.get(a.id) : undefined;
+              return (
+                <li
+                  key={a.id ?? idx}
+                  className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs"
+                >
+                  <UserAvatar user={{ name: a.name ?? null }} size="sm" />
+                  <span>{displayName}</span>
+                  {r != null && (
+                    <span className="tabular-nums text-muted-foreground">{r}/10</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Scorecard reds */}
+      {scorecardReds.length > 0 && (
+        <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-5 shadow-sm">
+          <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Scorecard — in the red
+          </h2>
+          <ul className="space-y-1.5 text-sm">
+            {scorecardReds.map((r) => (
+              <li key={r.metric} className="flex items-center gap-2">
+                <span className="font-medium">{r.metric}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {r.value} / goal {r.goal}
+                </span>
+                {r.owner && (
+                  <span className="ml-auto text-xs text-muted-foreground">{r.owner}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Headlines shared during the meeting */}
       {hdls.length > 0 && (
@@ -91,6 +164,17 @@ export default async function MeetingDetailPage({
         </section>
       )}
 
+      {/* Cascading message */}
+      {cascadingMessage && (
+        <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 shadow-sm">
+          <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <Megaphone className="h-3.5 w-3.5" />
+            Cascading Message
+          </h2>
+          <p className="whitespace-pre-wrap text-sm">{cascadingMessage}</p>
+        </section>
+      )}
+
       {/* Structured changelog of what changed during the meeting */}
       {changelog && (
         <section className="space-y-3">
@@ -100,44 +184,6 @@ export default async function MeetingDetailPage({
           <MeetingChangelog log={changelog} />
         </section>
       )}
-
-      {/* Raw data */}
-      <details className="text-sm">
-        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-          Raw meeting data
-        </summary>
-        <div className="mt-3 space-y-4">
-          {ratings.length > 0 && (
-            <div>
-              <h3 className="font-medium mb-1">Ratings</h3>
-              {ratings.map((r) => (
-                <div key={r.userId} className="flex items-center gap-1.5 text-muted-foreground">
-                  <UserAvatar user={{ name: r.userName }} size="sm" />
-                  {r.userName || r.userEmail}: {r.rating}/10
-                </div>
-              ))}
-            </div>
-          )}
-          {hdls.length > 0 && (
-            <div>
-              <h3 className="font-medium mb-1">Headlines</h3>
-              {hdls.map((h) => (
-                <div key={h.id} className="text-muted-foreground">
-                  [{h.kind}] {h.text} — {h.authorName}
-                </div>
-              ))}
-            </div>
-          )}
-          <div>
-            <h3 className="font-medium mb-1">Attendees</h3>
-            <div className="text-muted-foreground">
-              {(meeting.attendees as { name?: string; email?: string }[])
-                .map((a) => a.name || a.email)
-                .join(', ') || 'None recorded'}
-            </div>
-          </div>
-        </div>
-      </details>
     </div>
   );
 }

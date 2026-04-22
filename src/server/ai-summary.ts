@@ -128,11 +128,11 @@ Current rocks: ${ctx.rockChanges.map((r) => r.title).join(', ') || 'none reporte
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
+    max_tokens: 300,
     system: [
       {
         type: 'text',
-        text: 'You are an EOS meeting summarizer. Output concise markdown. No preamble, no fluff. Use these sections: ## Meeting Health, ## Scorecard, ## Rock Pulse, ## Issues Solved, ## Action Items, ## Cascading Message.',
+        text: 'You are an EOS meeting summarizer. Output a single short narrative of 2-3 sentences in plain prose — no markdown headers, no bullet lists, no tables. Focus on what stood out this week: notable trends, concerns, or wins. The rest of the meeting data is shown separately in structured cards, so do not restate the facts — add insight on top of them. If there is little to say, one sentence is fine.',
       },
       {
         type: 'text',
