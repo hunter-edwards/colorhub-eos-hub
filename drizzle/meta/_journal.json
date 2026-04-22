@@ -78,6 +78,13 @@
       "when": 1776863175540,
       "tag": "0010_meeting_status",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776863639786,
+      "tag": "0011_add_rsvps",
+      "breakpoints": true
     }
   ]
 }

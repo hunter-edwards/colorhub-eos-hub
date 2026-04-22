@@ -140,6 +140,18 @@ export const meetings = pgTable('meetings', {
   previousCascadingMessage: text('previous_cascading_message'),
 });
 
+export const rsvpStatus = pgEnum('rsvp_status', ['attending', 'declined', 'tentative']);
+
+export const meetingRsvps = pgTable('meeting_rsvps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  status: rsvpStatus('status').notNull().default('tentative'),
+  respondedAt: timestamp('responded_at').defaultNow().notNull(),
+}, (t) => ({
+  meetingUserUnique: unique('meeting_rsvps_meeting_user_unique').on(t.meetingId, t.userId),
+}));
+
 export const meetingRatings = pgTable('meeting_ratings', {
   id: uuid('id').primaryKey().defaultRandom(),
   meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
