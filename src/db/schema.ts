@@ -98,6 +98,7 @@ export const headlines = pgTable('headlines', {
 
 export const scorecardComparator = pgEnum('scorecard_comparator', ['gte', 'lte', 'eq', 'range']);
 export const meetingType = pgEnum('meeting_type', ['L10', 'quarterly', 'annual']);
+export const meetingStatus = pgEnum('meeting_status', ['draft', 'live', 'concluded']);
 
 export const scorecardMetrics = pgTable('scorecard_metrics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -127,12 +128,16 @@ export const meetings = pgTable('meetings', {
   id: uuid('id').primaryKey().defaultRandom(),
   teamId: uuid('team_id').references(() => teams.id),
   type: meetingType('type').notNull().default('L10'),
+  status: meetingStatus('status').notNull().default('draft'),
+  scheduledFor: timestamp('scheduled_for'),
   startedAt: timestamp('started_at').defaultNow().notNull(),
   endedAt: timestamp('ended_at'),
   ratingAvg: numeric('rating_avg'),
   attendees: jsonb('attendees').notNull().default([]),
   aiSummaryMd: text('ai_summary_md'),
   teamsPostedAt: timestamp('teams_posted_at'),
+  cascadingMessage: text('cascading_message'),
+  previousCascadingMessage: text('previous_cascading_message'),
 });
 
 export const meetingRatings = pgTable('meeting_ratings', {

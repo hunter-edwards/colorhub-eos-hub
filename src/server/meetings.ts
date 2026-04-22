@@ -12,7 +12,7 @@ import {
   rocks,
   rockActivity,
 } from '@/db/schema';
-import { eq, and, or, isNull, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, desc, gte, lte } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
@@ -32,10 +32,51 @@ export async function startMeeting(type: 'L10' | 'quarterly' | 'annual' = 'L10')
   if (active) throw new Error('A meeting is already in progress');
   const [created] = await db
     .insert(meetings)
-    .values({ type, attendees: [] })
+    .values({ type, attendees: [], status: 'live' })
     .returning();
   revalidatePath('/meeting/live');
+  revalidatePath('/meeting/upcoming');
   return created;
+}
+
+export async function createDraftMeeting(input: {
+  type?: 'L10' | 'quarterly' | 'annual';
+  scheduledFor?: Date;
+}) {
+  await requireRole('leader');
+  const [created] = await db
+    .insert(meetings)
+    .values({
+      type: input.type ?? 'L10',
+      attendees: [],
+      status: 'draft',
+      scheduledFor: input.scheduledFor,
+    })
+    .returning();
+  revalidatePath('/meeting/upcoming');
+  return created;
+}
+
+export async function activateMeeting(meetingId: string) {
+  await requireRole('leader');
+  const active = await getActiveMeeting();
+  if (active && active.id !== meetingId) {
+    throw new Error('A meeting is already in progress');
+  }
+  const [meeting] = await db
+    .select()
+    .from(meetings)
+    .where(eq(meetings.id, meetingId));
+  if (!meeting) throw new Error('Meeting not found');
+  if (meeting.status === 'concluded') throw new Error('Meeting already concluded');
+
+  await db
+    .update(meetings)
+    .set({ status: 'live', startedAt: new Date() })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+  revalidatePath('/meeting/upcoming');
+  return meetingId;
 }
 
 export async function endMeeting(meetingId: string) {
@@ -50,7 +91,7 @@ export async function endMeeting(meetingId: string) {
       : null;
   await db
     .update(meetings)
-    .set({ endedAt: new Date(), ratingAvg: avg })
+    .set({ endedAt: new Date(), ratingAvg: avg, status: 'concluded' })
     .where(eq(meetings.id, meetingId));
 
   // Generate AI summary (non-blocking — meeting still ends if this fails)
@@ -98,9 +139,17 @@ export async function getActiveMeeting() {
   const [active] = await db
     .select()
     .from(meetings)
-    .where(isNull(meetings.endedAt))
+    .where(eq(meetings.status, 'live'))
     .limit(1);
   return active ?? null;
+}
+
+export async function listDraftMeetings() {
+  return db
+    .select()
+    .from(meetings)
+    .where(eq(meetings.status, 'draft'))
+    .orderBy(meetings.scheduledFor);
 }
 
 export async function getMeeting(meetingId: string) {
