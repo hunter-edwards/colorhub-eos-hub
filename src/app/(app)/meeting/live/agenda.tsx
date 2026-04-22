@@ -10,6 +10,7 @@ import { RockReviewPanel } from './panels/rock-review';
 import { TodoReviewPanel } from './panels/todo-review';
 import { IDSPanel } from './panels/ids';
 import { ConcludePanel } from './panels/conclude';
+import { AttendeesManager } from './attendees-manager';
 
 const SECTIONS = [
   { key: 'segue', label: 'Segue', time: 300 },
@@ -27,10 +28,12 @@ export function Agenda({
   meetingId,
   startedAt,
   canLead,
+  canAdmin,
 }: {
   meetingId: string;
   startedAt: Date;
   canLead: boolean;
+  canAdmin: boolean;
 }) {
   const [active, setActive] = useState<SectionKey>('segue');
   const section = SECTIONS.find((s) => s.key === active)!;
@@ -100,9 +103,12 @@ export function Agenda({
 
       {/* Main panel */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-3">
           <h2 className="text-lg font-semibold">{section.label}</h2>
-          <Timer key={active} seconds={section.time} />
+          <div className="flex items-center gap-3">
+            {canLead && <AttendeesManager meetingId={meetingId} />}
+            <Timer key={active} seconds={section.time} />
+          </div>
         </div>
         <div className="flex-1 overflow-auto">
           {active === 'segue' && <SeguePanel meetingId={meetingId} />}
@@ -111,7 +117,9 @@ export function Agenda({
           {active === 'headlines' && <HeadlinesPanel meetingId={meetingId} />}
           {active === 'todos' && <TodoReviewPanel meetingId={meetingId} />}
           {active === 'ids' && <IDSPanel meetingId={meetingId} />}
-          {active === 'conclude' && <ConcludePanel meetingId={meetingId} canLead={canLead} />}
+          {active === 'conclude' && (
+            <ConcludePanel meetingId={meetingId} canLead={canLead} canAdmin={canAdmin} />
+          )}
         </div>
       </div>
     </div>

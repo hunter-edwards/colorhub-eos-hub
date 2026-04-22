@@ -10,6 +10,7 @@ export default async function MeetingLivePage() {
     getCurrentUserRole(),
   ]);
   const canLead = atLeast(role, 'leader');
+  const canAdmin = atLeast(role, 'admin');
 
   if (!meeting) {
     return (
@@ -25,5 +26,12 @@ export default async function MeetingLivePage() {
     );
   }
 
-  return <Agenda meetingId={meeting.id} startedAt={meeting.startedAt} canLead={canLead} />;
+  return (
+    <Agenda
+      meetingId={meeting.id}
+      startedAt={meeting.startedAt}
+      canLead={canLead}
+      canAdmin={canAdmin}
+    />
+  );
 }

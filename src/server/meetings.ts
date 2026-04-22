@@ -192,12 +192,67 @@ export async function joinMeeting(meetingId: string) {
   revalidatePath('/meeting/live');
 }
 
+export async function addAttendee(meetingId: string, userId: string) {
+  await requireRole('leader');
+  const [dbUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!dbUser) throw new Error('User not found');
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string; name: string | null; email: string }[]) || [];
+  if (attendees.some((a) => a.id === userId)) return;
+  await db
+    .update(meetings)
+    .set({
+      attendees: [...attendees, { id: dbUser.id, name: dbUser.name, email: dbUser.email }],
+    })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function removeAttendee(meetingId: string, userId: string) {
+  await requireRole('leader');
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string }[]) || [];
+  await db
+    .update(meetings)
+    .set({ attendees: attendees.filter((a) => a.id !== userId) })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function listTeamUsers() {
+  return db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .orderBy(users.name);
+}
+
 export async function setCascadingMessage(meetingId: string, text: string) {
   await requireRole('leader');
   await db
     .update(meetings)
     .set({ cascadingMessage: text })
     .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function rateMeetingOnBehalf(
+  meetingId: string,
+  userId: string,
+  rating: number,
+) {
+  await requireRole('admin');
+  await db
+    .insert(meetingRatings)
+    .values({ meetingId, userId, rating })
+    .onConflictDoUpdate({
+      target: [meetingRatings.meetingId, meetingRatings.userId],
+      set: { rating },
+    });
   revalidatePath('/meeting/live');
 }
 
