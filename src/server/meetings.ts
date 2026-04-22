@@ -18,6 +18,7 @@ import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
 import { postToTeams } from './teams-webhook';
 import { requireRole } from './auth-helpers';
+import { createNextDraftFromConcluded } from './carry-over';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -130,8 +131,16 @@ export async function endMeeting(meetingId: string) {
     }
   }
 
+  // Auto-create the next draft meeting (L10 only). Non-fatal if it fails.
+  try {
+    await createNextDraftFromConcluded(meetingId);
+  } catch (e) {
+    console.error('Failed to create next draft meeting:', e);
+  }
+
   revalidatePath('/meeting/live');
   revalidatePath('/meeting/history');
+  revalidatePath('/meeting/upcoming');
   return { meetingId };
 }
 
