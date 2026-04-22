@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import { listMetrics, listEntries, setEntry } from '@/server/scorecard';
 import { getWeekStarts, evaluateEntry } from '@/lib/scorecard-utils';
-import { createIssue } from '@/server/issues';
+import { createIssueIfNotExists } from '@/server/issues';
 import { UserAvatar } from '@/components/user-avatar';
 
 type Metric = {
@@ -80,9 +80,10 @@ export function ScorecardPanel({ meetingId }: { meetingId: string }) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={async () => {
-                  await createIssue({
+                  await createIssueIfNotExists({
                     title: `Scorecard: ${m.name} missed goal`,
                     ownerId: m.ownerId,
+                    sourceMetricId: m.id,
                   });
                 }}
               >

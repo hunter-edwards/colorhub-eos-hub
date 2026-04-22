@@ -83,6 +83,7 @@ export const issues = pgTable('issues', {
   status: issueStatus('status').notNull().default('open'),
   solvedAt: timestamp('solved_at'),
   droppedAt: timestamp('dropped_at'),
+  sourceMetricId: uuid('source_metric_id').references(() => scorecardMetrics.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
