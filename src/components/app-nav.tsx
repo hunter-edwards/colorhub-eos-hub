@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, Target, CheckSquare, AlertCircle,
-  LineChart, Video, History, Settings, LogOut, Moon, Sun,
+  LineChart, Video, History, Settings, LogOut, Moon, Sun, CalendarClock,
   Compass, Heart, Users, UserCheck, FileText, Menu,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -48,6 +48,7 @@ const sections = [
   {
     label: 'Meetings',
     items: [
+      { href: '/meeting/upcoming', label: 'Upcoming', icon: CalendarClock },
       { href: '/meeting/live', label: 'L10 Live', icon: Video },
       { href: '/meeting/history', label: 'History', icon: History },
     ],
