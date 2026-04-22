@@ -7,6 +7,8 @@ export const teams = pgTable('teams', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userRole = pgEnum('user_role', ['admin', 'leader', 'member']);
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(), // matches auth.users.id from Supabase Auth
   teamId: uuid('team_id').references(() => teams.id),
@@ -14,6 +16,7 @@ export const users = pgTable('users', {
   name: text('name'),
   avatarUrl: text('avatar_url'),
   profileColor: text('profile_color'),
+  role: userRole('role').notNull().default('member'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -80,6 +83,7 @@ export const issues = pgTable('issues', {
   status: issueStatus('status').notNull().default('open'),
   solvedAt: timestamp('solved_at'),
   droppedAt: timestamp('dropped_at'),
+  sourceMetricId: uuid('source_metric_id').references(() => scorecardMetrics.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -94,6 +98,7 @@ export const headlines = pgTable('headlines', {
 
 export const scorecardComparator = pgEnum('scorecard_comparator', ['gte', 'lte', 'eq', 'range']);
 export const meetingType = pgEnum('meeting_type', ['L10', 'quarterly', 'annual']);
+export const meetingStatus = pgEnum('meeting_status', ['draft', 'live', 'concluded']);
 
 export const scorecardMetrics = pgTable('scorecard_metrics', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -123,13 +128,29 @@ export const meetings = pgTable('meetings', {
   id: uuid('id').primaryKey().defaultRandom(),
   teamId: uuid('team_id').references(() => teams.id),
   type: meetingType('type').notNull().default('L10'),
+  status: meetingStatus('status').notNull().default('draft'),
+  scheduledFor: timestamp('scheduled_for'),
   startedAt: timestamp('started_at').defaultNow().notNull(),
   endedAt: timestamp('ended_at'),
   ratingAvg: numeric('rating_avg'),
   attendees: jsonb('attendees').notNull().default([]),
   aiSummaryMd: text('ai_summary_md'),
   teamsPostedAt: timestamp('teams_posted_at'),
+  cascadingMessage: text('cascading_message'),
+  previousCascadingMessage: text('previous_cascading_message'),
 });
+
+export const rsvpStatus = pgEnum('rsvp_status', ['attending', 'declined', 'tentative']);
+
+export const meetingRsvps = pgTable('meeting_rsvps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  meetingId: uuid('meeting_id').references(() => meetings.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  status: rsvpStatus('status').notNull().default('tentative'),
+  respondedAt: timestamp('responded_at').defaultNow().notNull(),
+}, (t) => ({
+  meetingUserUnique: unique('meeting_rsvps_meeting_user_unique').on(t.meetingId, t.userId),
+}));
 
 export const meetingRatings = pgTable('meeting_ratings', {
   id: uuid('id').primaryKey().defaultRandom(),

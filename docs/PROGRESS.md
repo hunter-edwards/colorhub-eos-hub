@@ -228,6 +228,29 @@ Supabase project URL allowlist includes `http://localhost:3000/**`.
 
 All phases merged to `main` via PRs on GitHub (`hunter-edwards/colorhub-eos-hub`).
 
+## Meeting workflow v2 (2026-04-22) ✅
+
+Shipped the meeting-workflow upgrade plan at `docs/plans/2026-04-21-meeting-workflow-upgrades.md`. Fourteen tasks landed across four commits on branch `claude/funny-kare-227296`.
+
+**What's new:**
+- **Role-based access** — new `user_role` pgEnum (`admin` | `leader` | `member`) with `atLeast(role, required)` helper (`src/lib/auth.ts`) and `requireUser` / `getCurrentUserRole` / `requireRole` server helpers (`src/server/auth-helpers.ts`). Seed updates existing users' role from `TEAM_MEMBERS`. Non-leaders can't start/end meetings; non-admins can't rate on behalf.
+- **Meeting state machine** — `meeting_status` pgEnum (`draft` | `live` | `concluded`). `getActiveMeeting` filters on `status = 'live'` (no more `isNull(endedAt)` heuristic). `createDraftMeeting`, `activateMeeting`, `listDraftMeetings`, `setCascadingMessage` server actions.
+- **Upcoming meetings UX** — `/meeting/upcoming` lists draft meetings, each with Prepare + Start (leader-only) + RSVP pills (attending / tentative / declined with live counts). `/meeting/[id]/prep` shows previous cascading message, Headlines panel for pre-fill, and links to Issues / To-Dos.
+- **Scorecard issue dedupe** — `issues.source_metric_id` FK + `createIssueIfNotExists` prevents multiple open issues being auto-created from the same failing metric week over week.
+- **Adaptive Card redesign** — `teams-webhook.ts` now builds sectioned v1.4 cards (health / scorecard / rocks / headlines / issues / to-dos / cascading) with ColumnSet + FactSet and colored section headers. Empty sections drop cleanly.
+- **Auto carry-over** — ending an L10 inserts the next draft (`createNextDraftFromConcluded`, 7-day cadence), and `cascadingMessage` copies forward as `previousCascadingMessage`. Open issues/to-dos stay in their tables and surface naturally — no row duplication.
+- **Admin controls in live meeting** — `AttendeesManager` popover in the agenda header for leaders (add/remove attendees via `addAttendee` / `removeAttendee`). Conclude panel shows admins a rate-on-behalf list (`rateMeetingOnBehalf`) for any unrated user.
+- **Cascading message** — persisted on meetings row (`cascading_message`), editable in Conclude panel during live meeting, surfaced in AI summary context (`ai-summary.ts` uses real value).
+
+**Migrations:** 0008 (user role), 0009 (issues.source_metric_id), 0010 (meeting status + backfill), 0011 (meeting_rsvps with `(meeting_id, user_id)` unique). 0010/0011 applied manually via node `postgres` driver after `drizzle-kit migrate` hung on the existing DB connection — prefer that fallback when migrate stalls.
+
+**Test coverage:** 108 Vitest tests across 11 files. `auth.test.ts` (6), `carry-over.test.ts` (5), `issues.test.ts` (2), `teams-webhook.test.ts` (17) added in this round. E2E smoke at `tests/e2e/happy-path.spec.ts`.
+
+**Gotchas worth remembering:**
+- `import 'server-only'` breaks Vitest — don't add it to files that need to stay unit-testable. `'use server'` at the top of `src/server/*.ts` still enforces the server boundary at build time.
+- Button component here has **no `asChild` prop** — use `buttonVariants({ variant, size })` as the `className` on a plain `<Link>` instead.
+- When a Next Server Component returns JSX that calls RSC-only data fns per-row, do the fetches in parallel with `Promise.all(rows.map(...))` — avoids N+1 waterfalls (see `upcoming/page.tsx`).
+
 ## Known dev-environment gotchas
 
 - `~/Downloads/` is itself a git repo → multi-lockfile warning shows up unless `turbopack.root` is pinned (it is).

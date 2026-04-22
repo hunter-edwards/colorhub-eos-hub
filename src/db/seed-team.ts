@@ -12,21 +12,22 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const TEAM_MEMBERS = [
-  { name: 'Biak Hmun Sang', email: 'biak@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine' },
-  { name: 'Cung Thang', email: 'cung@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine' },
-  { name: 'Hunter Edwards', email: 'h.edwards.327@gmail.com', title: 'Operations and Account Coordinator', manager: 'Tim Harris' },
-  { name: 'Javier Alvarez Lopez', email: 'javier@colorhub.io', title: 'Industrial Maintenance Mechanic/Production Lead', manager: 'Tim Harris' },
-  { name: 'Jill Harris', email: 'jill@colorhub.io', title: 'Office Admin', manager: 'Tim Harris' },
-  { name: 'Jonathan Sang', email: 'jonathan@colorhub.io', title: 'Die Cut Operator', manager: 'Tyler Valentine' },
-  { name: 'Kyle Raduski', email: 'kyle@colorhub.io', title: 'Material Handler/Production Associate', manager: 'Tyler Valentine' },
-  { name: 'Leigh Tamminga', email: 'leigh@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine' },
-  { name: 'No Thang', email: 'no.thang@colorhub.io', title: 'Production Assistant', manager: 'Tyler Valentine' },
-  { name: 'Tim Harris', email: 'tim@colorhub.io', title: 'CEO', manager: null },
-  { name: 'Tyler Valentine', email: 'tyler@colorhub.io', title: 'Operations and Account Coordinator', manager: 'Tim Harris' },
-  { name: 'Victor Fam-bawl', email: 'victor@colorhub.io', title: 'Production Assistant', manager: 'Tyler Valentine' },
-  { name: 'Yoel Alvarez Pozo', email: 'yoel@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine' },
-  { name: 'Ysaias Yerbes', email: 'ysaias@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine' },
+type SeedRole = 'admin' | 'leader' | 'member';
+const TEAM_MEMBERS: Array<{ name: string; email: string; title: string; manager: string | null; role: SeedRole }> = [
+  { name: 'Biak Hmun Sang', email: 'biak@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Cung Thang', email: 'cung@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Hunter Edwards', email: 'h.edwards.327@gmail.com', title: 'Operations and Account Coordinator', manager: 'Tim Harris', role: 'leader' },
+  { name: 'Javier Alvarez Lopez', email: 'javier@colorhub.io', title: 'Industrial Maintenance Mechanic/Production Lead', manager: 'Tim Harris', role: 'member' },
+  { name: 'Jill Harris', email: 'jill@colorhub.io', title: 'Office Admin', manager: 'Tim Harris', role: 'member' },
+  { name: 'Jonathan Sang', email: 'jonathan@colorhub.io', title: 'Die Cut Operator', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Kyle Raduski', email: 'kyle@colorhub.io', title: 'Material Handler/Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Leigh Tamminga', email: 'leigh@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'No Thang', email: 'no.thang@colorhub.io', title: 'Production Assistant', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Tim Harris', email: 'tim@colorhub.io', title: 'CEO', manager: null, role: 'admin' },
+  { name: 'Tyler Valentine', email: 'tyler@colorhub.io', title: 'Operations and Account Coordinator', manager: 'Tim Harris', role: 'admin' },
+  { name: 'Victor Fam-bawl', email: 'victor@colorhub.io', title: 'Production Assistant', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Yoel Alvarez Pozo', email: 'yoel@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Ysaias Yerbes', email: 'ysaias@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
 ];
 
 const CORE_VALUES = [
@@ -57,6 +58,11 @@ async function main() {
         await db.update(users).set({ name: member.name }).where(eq(users.id, existing.id));
         console.log(`  Updated name: ${member.name}`);
       }
+      // Always sync role — admins/leaders are defined in seed.
+      if (existing.role !== member.role) {
+        await db.update(users).set({ role: member.role }).where(eq(users.id, existing.id));
+        console.log(`  Updated role: ${member.name} → ${member.role}`);
+      }
       userMap.set(member.name, existing.id);
       console.log(`  Exists: ${member.name} (${existing.id})`);
       continue;
@@ -82,6 +88,7 @@ async function main() {
       teamId,
       email: member.email,
       name: member.name,
+      role: member.role,
     }).onConflictDoNothing();
 
     userMap.set(member.name, authId);

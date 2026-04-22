@@ -18,6 +18,7 @@ export async function createIssue(input: {
   description?: string;
   ownerId?: string;
   list?: 'short_term' | 'long_term';
+  sourceMetricId?: string;
 }) {
   await requireUser();
   const [created] = await db
@@ -27,10 +28,47 @@ export async function createIssue(input: {
       description: input.description,
       ownerId: input.ownerId,
       list: input.list ?? 'short_term',
+      sourceMetricId: input.sourceMetricId,
     })
     .returning();
   revalidatePath('/issues');
+  revalidatePath('/meeting/live');
   return created;
+}
+
+/**
+ * Create an issue unless an OPEN issue already exists for the same
+ * sourceMetricId. Used by the scorecard panel to avoid flooding the
+ * issues list when the same metric stays red week after week.
+ */
+export async function createIssueIfNotExists(input: {
+  title: string;
+  description?: string;
+  ownerId?: string;
+  list?: 'short_term' | 'long_term';
+  sourceMetricId: string;
+}) {
+  await requireUser();
+  const [existing] = await db
+    .select()
+    .from(issues)
+    .where(and(eq(issues.status, 'open'), eq(issues.sourceMetricId, input.sourceMetricId)))
+    .limit(1);
+  if (existing) return { issue: existing, created: false as const };
+
+  const [created] = await db
+    .insert(issues)
+    .values({
+      title: input.title,
+      description: input.description,
+      ownerId: input.ownerId,
+      list: input.list ?? 'short_term',
+      sourceMetricId: input.sourceMetricId,
+    })
+    .returning();
+  revalidatePath('/issues');
+  revalidatePath('/meeting/live');
+  return { issue: created, created: true as const };
 }
 
 export async function listIssues(list?: 'short_term' | 'long_term') {

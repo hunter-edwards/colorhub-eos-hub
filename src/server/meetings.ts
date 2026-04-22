@@ -12,11 +12,13 @@ import {
   rocks,
   rockActivity,
 } from '@/db/schema';
-import { eq, and, or, isNull, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, desc, gte, lte } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
 import { postToTeams } from './teams-webhook';
+import { requireRole } from './auth-helpers';
+import { createNextDraftFromConcluded } from './carry-over';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -26,19 +28,60 @@ async function requireUser() {
 }
 
 export async function startMeeting(type: 'L10' | 'quarterly' | 'annual' = 'L10') {
-  await requireUser();
+  await requireRole('leader');
   const active = await getActiveMeeting();
   if (active) throw new Error('A meeting is already in progress');
   const [created] = await db
     .insert(meetings)
-    .values({ type, attendees: [] })
+    .values({ type, attendees: [], status: 'live' })
     .returning();
   revalidatePath('/meeting/live');
+  revalidatePath('/meeting/upcoming');
   return created;
 }
 
+export async function createDraftMeeting(input: {
+  type?: 'L10' | 'quarterly' | 'annual';
+  scheduledFor?: Date;
+}) {
+  await requireRole('leader');
+  const [created] = await db
+    .insert(meetings)
+    .values({
+      type: input.type ?? 'L10',
+      attendees: [],
+      status: 'draft',
+      scheduledFor: input.scheduledFor,
+    })
+    .returning();
+  revalidatePath('/meeting/upcoming');
+  return created;
+}
+
+export async function activateMeeting(meetingId: string) {
+  await requireRole('leader');
+  const active = await getActiveMeeting();
+  if (active && active.id !== meetingId) {
+    throw new Error('A meeting is already in progress');
+  }
+  const [meeting] = await db
+    .select()
+    .from(meetings)
+    .where(eq(meetings.id, meetingId));
+  if (!meeting) throw new Error('Meeting not found');
+  if (meeting.status === 'concluded') throw new Error('Meeting already concluded');
+
+  await db
+    .update(meetings)
+    .set({ status: 'live', startedAt: new Date() })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+  revalidatePath('/meeting/upcoming');
+  return meetingId;
+}
+
 export async function endMeeting(meetingId: string) {
-  await requireUser();
+  await requireRole('leader');
   const ratings = await db
     .select({ rating: meetingRatings.rating })
     .from(meetingRatings)
@@ -49,7 +92,7 @@ export async function endMeeting(meetingId: string) {
       : null;
   await db
     .update(meetings)
-    .set({ endedAt: new Date(), ratingAvg: avg })
+    .set({ endedAt: new Date(), ratingAvg: avg, status: 'concluded' })
     .where(eq(meetings.id, meetingId));
 
   // Generate AI summary (non-blocking — meeting still ends if this fails)
@@ -88,8 +131,16 @@ export async function endMeeting(meetingId: string) {
     }
   }
 
+  // Auto-create the next draft meeting (L10 only). Non-fatal if it fails.
+  try {
+    await createNextDraftFromConcluded(meetingId);
+  } catch (e) {
+    console.error('Failed to create next draft meeting:', e);
+  }
+
   revalidatePath('/meeting/live');
   revalidatePath('/meeting/history');
+  revalidatePath('/meeting/upcoming');
   return { meetingId };
 }
 
@@ -97,9 +148,17 @@ export async function getActiveMeeting() {
   const [active] = await db
     .select()
     .from(meetings)
-    .where(isNull(meetings.endedAt))
+    .where(eq(meetings.status, 'live'))
     .limit(1);
   return active ?? null;
+}
+
+export async function listDraftMeetings() {
+  return db
+    .select()
+    .from(meetings)
+    .where(eq(meetings.status, 'draft'))
+    .orderBy(meetings.scheduledFor);
 }
 
 export async function getMeeting(meetingId: string) {
@@ -130,6 +189,70 @@ export async function joinMeeting(meetingId: string) {
       attendees: [...attendees, { id: dbUser.id, name: dbUser.name, email: dbUser.email }],
     })
     .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function addAttendee(meetingId: string, userId: string) {
+  await requireRole('leader');
+  const [dbUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!dbUser) throw new Error('User not found');
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string; name: string | null; email: string }[]) || [];
+  if (attendees.some((a) => a.id === userId)) return;
+  await db
+    .update(meetings)
+    .set({
+      attendees: [...attendees, { id: dbUser.id, name: dbUser.name, email: dbUser.email }],
+    })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function removeAttendee(meetingId: string, userId: string) {
+  await requireRole('leader');
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string }[]) || [];
+  await db
+    .update(meetings)
+    .set({ attendees: attendees.filter((a) => a.id !== userId) })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function listTeamUsers() {
+  return db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .orderBy(users.name);
+}
+
+export async function setCascadingMessage(meetingId: string, text: string) {
+  await requireRole('leader');
+  await db
+    .update(meetings)
+    .set({ cascadingMessage: text })
+    .where(eq(meetings.id, meetingId));
+  revalidatePath('/meeting/live');
+}
+
+export async function rateMeetingOnBehalf(
+  meetingId: string,
+  userId: string,
+  rating: number,
+) {
+  await requireRole('admin');
+  await db
+    .insert(meetingRatings)
+    .values({ meetingId, userId, rating })
+    .onConflictDoUpdate({
+      target: [meetingRatings.meetingId, meetingRatings.userId],
+      set: { rating },
+    });
   revalidatePath('/meeting/live');
 }
 

@@ -3,7 +3,15 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { endMeeting, rateMeeting, getMeetingRatings } from '@/server/meetings';
+import {
+  endMeeting,
+  rateMeeting,
+  rateMeetingOnBehalf,
+  getMeetingRatings,
+  setCascadingMessage,
+  getMeeting,
+  listTeamUsers,
+} from '@/server/meetings';
 import { useRouter } from 'next/navigation';
 
 type Rating = {
@@ -13,16 +21,31 @@ type Rating = {
   userEmail: string | null;
 };
 
-export function ConcludePanel({ meetingId }: { meetingId: string }) {
+type TeamUser = { id: string; name: string | null; email: string };
+
+export function ConcludePanel({
+  meetingId,
+  canLead = false,
+  canAdmin = false,
+}: {
+  meetingId: string;
+  canLead?: boolean;
+  canAdmin?: boolean;
+}) {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [myRating, setMyRating] = useState<number | null>(null);
   const [cascading, setCascading] = useState('');
   const [ending, setEnding] = useState(false);
+  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
   const router = useRouter();
 
   useEffect(() => {
     getMeetingRatings(meetingId).then(setRatings);
-  }, [meetingId]);
+    getMeeting(meetingId).then((m) => {
+      if (m?.cascadingMessage) setCascading(m.cascadingMessage);
+    });
+    if (canAdmin) listTeamUsers().then(setTeamUsers);
+  }, [meetingId, canAdmin]);
 
   const avg =
     ratings.length > 0
@@ -35,6 +58,14 @@ export function ConcludePanel({ meetingId }: { meetingId: string }) {
     setRatings(await getMeetingRatings(meetingId));
   }
 
+  async function submitRatingFor(userId: string, value: number) {
+    await rateMeetingOnBehalf(meetingId, userId, value);
+    setRatings(await getMeetingRatings(meetingId));
+  }
+
+  const ratingByUser = new Map(ratings.map((r) => [r.userId, r.rating]));
+  const unrated = teamUsers.filter((u) => !ratingByUser.has(u.id));
+
   return (
     <div className="space-y-6 max-w-lg">
       <div className="space-y-3">
@@ -43,7 +74,11 @@ export function ConcludePanel({ meetingId }: { meetingId: string }) {
           placeholder="Key message to cascade to your teams..."
           value={cascading}
           onChange={(e) => setCascading(e.target.value)}
+          onBlur={() => {
+            if (canLead) void setCascadingMessage(meetingId, cascading);
+          }}
           rows={3}
+          disabled={!canLead}
         />
       </div>
 
@@ -68,18 +103,56 @@ export function ConcludePanel({ meetingId }: { meetingId: string }) {
         </div>
       </div>
 
-      <Button
-        size="lg"
-        className="w-full"
-        disabled={ending}
-        onClick={async () => {
-          setEnding(true);
-          const result = await endMeeting(meetingId);
-          router.push(`/meeting/history/${result.meetingId}`);
-        }}
-      >
-        {ending ? 'Ending...' : 'End & Summarize'}
-      </Button>
+      {canAdmin && unrated.length > 0 && (
+        <div className="space-y-3 rounded-md border border-dashed p-3">
+          <h3 className="font-medium text-sm">Rate on behalf (admin)</h3>
+          <p className="text-xs text-muted-foreground">
+            Record ratings for attendees who couldn&apos;t submit one themselves.
+          </p>
+          <ul className="space-y-2">
+            {unrated.map((u) => (
+              <li key={u.id} className="flex items-center gap-2">
+                <span className="text-sm flex-1 truncate">{u.name ?? u.email}</span>
+                <select
+                  defaultValue=""
+                  className="h-8 rounded-md border bg-background px-2 text-sm"
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    if (!val) return;
+                    await submitRatingFor(u.id, val);
+                  }}
+                >
+                  <option value="">Rate…</option>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {canLead ? (
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={ending}
+          onClick={async () => {
+            setEnding(true);
+            const result = await endMeeting(meetingId);
+            router.push(`/meeting/history/${result.meetingId}`);
+          }}
+        >
+          {ending ? 'Ending...' : 'End & Summarize'}
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center">
+          Only leaders can end the meeting.
+        </p>
+      )}
     </div>
   );
 }

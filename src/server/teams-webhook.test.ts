@@ -77,6 +77,45 @@ describe('buildAdaptiveCard', () => {
     const card = buildAdaptiveCard(mockCtx, mockSummary);
     expect(card.attachments[0].content.actions).toBeUndefined();
   });
+
+  it('includes a Meeting Health section', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    expect(JSON.stringify(card)).toContain('Meeting Health');
+  });
+
+  it('includes a Scorecard section when reds exist', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    const s = JSON.stringify(card);
+    expect(s).toContain('Scorecard');
+    expect(s).toContain('Revenue');
+  });
+
+  it('omits Scorecard section when no reds', () => {
+    const card = buildAdaptiveCard({ ...mockCtx, scorecardReds: [] }, mockSummary);
+    expect(JSON.stringify(card)).not.toContain('Metrics in Red');
+  });
+
+  it('includes Rock Pulse section when rocks changed', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    expect(JSON.stringify(card)).toContain('Rock Pulse');
+  });
+
+  it('includes Cascading Message when present', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    const s = JSON.stringify(card);
+    expect(s).toContain('Cascading Message');
+    expect(s).toContain('Ship it!');
+  });
+
+  it('omits Cascading Message when blank', () => {
+    const card = buildAdaptiveCard({ ...mockCtx, cascadingMessage: '   ' }, mockSummary);
+    expect(JSON.stringify(card)).not.toContain('Cascading Message');
+  });
+
+  it('uses attention color on scorecard reds header', () => {
+    const card = buildAdaptiveCard(mockCtx, mockSummary);
+    expect(JSON.stringify(card)).toContain('"color":"attention"');
+  });
 });
 
 describe('postToTeams', () => {
