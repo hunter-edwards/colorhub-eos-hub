@@ -26,9 +26,11 @@ type SectionKey = (typeof SECTIONS)[number]['key'];
 export function Agenda({
   meetingId,
   startedAt,
+  canLead,
 }: {
   meetingId: string;
   startedAt: Date;
+  canLead: boolean;
 }) {
   const [active, setActive] = useState<SectionKey>('segue');
   const section = SECTIONS.find((s) => s.key === active)!;
@@ -109,7 +111,7 @@ export function Agenda({
           {active === 'headlines' && <HeadlinesPanel meetingId={meetingId} />}
           {active === 'todos' && <TodoReviewPanel meetingId={meetingId} />}
           {active === 'ids' && <IDSPanel meetingId={meetingId} />}
-          {active === 'conclude' && <ConcludePanel meetingId={meetingId} />}
+          {active === 'conclude' && <ConcludePanel meetingId={meetingId} canLead={canLead} />}
         </div>
       </div>
     </div>

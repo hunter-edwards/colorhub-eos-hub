@@ -13,7 +13,7 @@ type Rating = {
   userEmail: string | null;
 };
 
-export function ConcludePanel({ meetingId }: { meetingId: string }) {
+export function ConcludePanel({ meetingId, canLead = false }: { meetingId: string; canLead?: boolean }) {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [myRating, setMyRating] = useState<number | null>(null);
   const [cascading, setCascading] = useState('');
@@ -68,18 +68,24 @@ export function ConcludePanel({ meetingId }: { meetingId: string }) {
         </div>
       </div>
 
-      <Button
-        size="lg"
-        className="w-full"
-        disabled={ending}
-        onClick={async () => {
-          setEnding(true);
-          const result = await endMeeting(meetingId);
-          router.push(`/meeting/history/${result.meetingId}`);
-        }}
-      >
-        {ending ? 'Ending...' : 'End & Summarize'}
-      </Button>
+      {canLead ? (
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={ending}
+          onClick={async () => {
+            setEnding(true);
+            const result = await endMeeting(meetingId);
+            router.push(`/meeting/history/${result.meetingId}`);
+          }}
+        >
+          {ending ? 'Ending...' : 'End & Summarize'}
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center">
+          Only leaders can end the meeting.
+        </p>
+      )}
     </div>
   );
 }

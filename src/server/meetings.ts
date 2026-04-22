@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { collectMeetingContext, generateSummary } from './ai-summary';
 import { postToTeams } from './teams-webhook';
+import { requireRole } from './auth-helpers';
 
 async function requireUser() {
   const supabase = await createClient();
@@ -26,7 +27,7 @@ async function requireUser() {
 }
 
 export async function startMeeting(type: 'L10' | 'quarterly' | 'annual' = 'L10') {
-  await requireUser();
+  await requireRole('leader');
   const active = await getActiveMeeting();
   if (active) throw new Error('A meeting is already in progress');
   const [created] = await db
@@ -38,7 +39,7 @@ export async function startMeeting(type: 'L10' | 'quarterly' | 'annual' = 'L10')
 }
 
 export async function endMeeting(meetingId: string) {
-  await requireUser();
+  await requireRole('leader');
   const ratings = await db
     .select({ rating: meetingRatings.rating })
     .from(meetingRatings)
