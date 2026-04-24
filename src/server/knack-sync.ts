@@ -1,9 +1,10 @@
 'use server';
 
 import { db } from '@/db';
-import { scorecardMetrics, scorecardEntries } from '@/db/schema';
+import { scorecardMetrics, scorecardEntries, knackSyncLog } from '@/db/schema';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { desc } from 'drizzle-orm';
 import {
   fetchCompletedRuns,
   fetchRunsForParentJobs,
@@ -57,21 +58,26 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
     return { ok: false, weeksUpdated: 0, error: 'Knack credentials not configured (KNACK_APP_ID / KNACK_API_KEY)' };
   }
 
+  const totalStart = Date.now();
   try {
     const weeks = getWeekStarts(weekCount);
     const startDate = weeks[weeks.length - 1]; // earliest week
     const endDate = addDays(weeks[0], 7);       // end of current week
 
     // 1. Runs completed in the window (field_2292 date in range)
+    const t1 = Date.now();
     const completedRuns = await fetchCompletedRuns(config, startDate, endDate);
+    const t1Ms = Date.now() - t1;
 
     // 2. For parent jobs touched by those runs, pull every run (any date)
     //    so we can check if ALL runs across all parts are completed.
     const parentJobs = [...new Set(completedRuns.map((r) => r.parentJob).filter(Boolean))];
+    const t2 = Date.now();
     const allJobRuns = await fetchRunsForParentJobs(config, parentJobs);
+    const t2Ms = Date.now() - t2;
 
+    const t3 = Date.now();
     const weeklyKPIs = computeWeeklyKPIs(completedRuns, allJobRuns, weeks);
-
     const metricIds = await ensureMetrics(user.id);
 
     for (const week of weeklyKPIs) {
@@ -93,13 +99,51 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
           });
       }
     }
+    const t3Ms = Date.now() - t3;
+
+    const totalMs = Date.now() - totalStart;
+    console.log(
+      `[knack-sync] weeks=${weekCount} completedRuns=${completedRuns.length} (${t1Ms}ms) · ` +
+        `parentJobs=${parentJobs.length} allJobRuns=${allJobRuns.length} (${t2Ms}ms) · ` +
+        `upsert=${weeklyKPIs.length * Object.keys(metricIds).length} (${t3Ms}ms) · ` +
+        `total=${totalMs}ms`
+    );
+
+    await db.insert(knackSyncLog).values({
+      weeksUpdated: weeklyKPIs.length,
+      weeksRequested: weekCount,
+      durationMs: totalMs,
+      ok: true,
+    });
 
     revalidatePath('/scorecard');
     return { ok: true, weeksUpdated: weeklyKPIs.length };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    const totalMs = Date.now() - totalStart;
+    console.error(`[knack-sync] FAILED after ${totalMs}ms: ${message}`);
+    await db.insert(knackSyncLog).values({
+      weeksUpdated: 0,
+      weeksRequested: weekCount,
+      durationMs: totalMs,
+      ok: false,
+    }).catch(() => {});
     return { ok: false, weeksUpdated: 0, error: message };
   }
+}
+
+export async function getLastKnackSync(): Promise<{
+  syncedAt: Date;
+  weeksUpdated: number;
+  durationMs: number;
+  ok: boolean;
+} | null> {
+  const [row] = await db
+    .select()
+    .from(knackSyncLog)
+    .orderBy(desc(knackSyncLog.syncedAt))
+    .limit(1);
+  return row ?? null;
 }
 
 /**
