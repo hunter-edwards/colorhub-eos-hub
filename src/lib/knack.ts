@@ -186,22 +186,44 @@ export async function fetchCompletedRuns(
  * Fetch every run for a given set of parent job numbers (any customer).
  * Used to determine if ALL runs for a parent job are completed, since
  * some of them may fall outside the completion-date window.
+ *
+ * Filters go in the query string, and Knack (and any proxy in front of it)
+ * will reject URLs where the `filters` param gets too large — the dreaded
+ * 431. We batch the OR list so each request stays well under that limit,
+ * then run batches in parallel with a small concurrency cap.
  */
+const PARENT_JOB_BATCH = 25;
+const PARENT_JOB_CONCURRENCY = 4;
+
 export async function fetchRunsForParentJobs(
   config: KnackConfig,
   parentJobs: string[]
 ): Promise<KnackRun[]> {
   if (parentJobs.length === 0) return [];
 
-  // Knack "or" with multiple equality filters
-  const rules = parentJobs.map((pj) => ({
-    field: 'field_534',
-    operator: 'is',
-    value: pj,
-  }));
-  const filters = JSON.stringify({ match: 'or', rules });
+  const batches: string[][] = [];
+  for (let i = 0; i < parentJobs.length; i += PARENT_JOB_BATCH) {
+    batches.push(parentJobs.slice(i, i + PARENT_JOB_BATCH));
+  }
 
-  return paginate(config, filters);
+  const results: KnackRun[] = [];
+  for (let i = 0; i < batches.length; i += PARENT_JOB_CONCURRENCY) {
+    const slice = batches.slice(i, i + PARENT_JOB_CONCURRENCY);
+    const batchResults = await Promise.all(
+      slice.map((batch) => {
+        const filters = JSON.stringify({
+          match: 'or',
+          rules: batch.map((pj) => ({ field: 'field_534', operator: 'is', value: pj })),
+        });
+        return paginate(config, filters);
+      })
+    );
+    for (const runs of batchResults) results.push(...runs);
+  }
+
+  // De-duplicate by id in case a parent job appears via multiple batches.
+  const seen = new Set<string>();
+  return results.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 }
 
 async function paginate(config: KnackConfig, filters: string): Promise<KnackRun[]> {

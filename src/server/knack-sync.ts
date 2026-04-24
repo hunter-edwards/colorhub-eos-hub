@@ -46,7 +46,7 @@ type KPIKey = keyof typeof KPI_METRIC_MAP;
  * populated. Parent jobs count as completed when every run for that
  * parent job has field_2292 set.
  */
-export async function syncKnackToScorecard(weekCount = 13): Promise<{
+export async function syncKnackToScorecard(weekCount = 1): Promise<{
   ok: boolean;
   weeksUpdated: number;
   error?: string;
