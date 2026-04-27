@@ -8,6 +8,7 @@ import { getCurrentUserRole } from '@/server/auth-helpers';
 import { atLeast } from '@/lib/auth';
 import { HeadlinesPanel } from '../../live/panels/headlines';
 import { ActivateButton } from '../../upcoming/activate-button';
+import { PrepIssuesPanel } from './prep-issues';
 
 function formatWhen(d: Date | null): string {
   if (!d) return 'Unscheduled';
@@ -92,18 +93,21 @@ export default async function MeetingPrepPage({
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Carry-over lists</h2>
+        <h2 className="text-lg font-semibold">Issues</h2>
         <p className="text-sm text-muted-foreground">
-          Open issues and to-dos automatically surface in the live meeting — no need to copy them forward.
+          Add anything you want surfaced in IDS. Open issues carry over
+          automatically — the full board is at{' '}
+          <Link href="/issues" className="underline">/issues</Link>.
         </p>
-        <div className="flex gap-2">
-          <Link href="/issues" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-            View issues
-          </Link>
-          <Link href="/todos" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-            View to-dos
-          </Link>
-        </div>
+        <PrepIssuesPanel />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">To-dos</h2>
+        <p className="text-sm text-muted-foreground">
+          Open to-dos surface automatically in the live meeting — review them at{' '}
+          <Link href="/todos" className="underline">/todos</Link>.
+        </p>
       </section>
     </div>
   );

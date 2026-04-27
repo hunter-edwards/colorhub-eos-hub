@@ -1,13 +1,14 @@
 import { getActiveMeeting } from '@/server/meetings';
-import { getCurrentUserRole } from '@/server/auth-helpers';
+import { getCurrentUserRole, requireUser } from '@/server/auth-helpers';
 import { atLeast } from '@/lib/auth';
 import { Agenda } from './agenda';
 import { StartMeetingButton } from './start-meeting-button';
 
 export default async function MeetingLivePage() {
-  const [meeting, role] = await Promise.all([
+  const [meeting, role, authUser] = await Promise.all([
     getActiveMeeting(),
     getCurrentUserRole(),
+    requireUser(),
   ]);
   const canLead = atLeast(role, 'leader');
   const canAdmin = atLeast(role, 'admin');
@@ -26,12 +27,16 @@ export default async function MeetingLivePage() {
     );
   }
 
+  const attendees = (meeting.attendees as { id: string }[]) || [];
+  const isAttendee = attendees.some((a) => a.id === authUser.id);
+
   return (
     <Agenda
       meetingId={meeting.id}
       startedAt={meeting.startedAt}
       canLead={canLead}
       canAdmin={canAdmin}
+      isAttendee={isAttendee}
     />
   );
 }

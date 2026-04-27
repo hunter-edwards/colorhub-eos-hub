@@ -1,18 +1,19 @@
 import { listMetrics, listEntries } from '@/server/scorecard';
 import { getWeekStarts } from '@/lib/scorecard-utils';
 import { listTeamMembers } from '@/server/rocks';
-import { isKnackConfigured } from '@/server/knack-sync';
+import { isKnackConfigured, getLastKnackSync } from '@/server/knack-sync';
 import { ScorecardGrid } from './grid';
 import { KPICharts } from './kpi-charts';
 import { KnackSyncButton } from './knack-sync-button';
 
 export default async function ScorecardPage() {
   const weeks = getWeekStarts(13);
-  const [metrics, entries, members, knackReady] = await Promise.all([
+  const [metrics, entries, members, knackReady, lastSync] = await Promise.all([
     listMetrics(),
     listEntries(weeks[0], 13),
     listTeamMembers(),
     isKnackConfigured(),
+    getLastKnackSync(),
   ]);
 
   return (
@@ -24,7 +25,7 @@ export default async function ScorecardPage() {
             Weekly KPIs pulled from Knack. Click any chart to see the runs behind the number.
           </p>
         </div>
-        {knackReady && <KnackSyncButton />}
+        {knackReady && <KnackSyncButton lastSyncedAt={lastSync?.syncedAt ?? null} />}
       </header>
 
       <section className="space-y-4">

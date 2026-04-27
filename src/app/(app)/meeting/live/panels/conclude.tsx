@@ -10,7 +10,6 @@ import {
   getMeetingRatings,
   setCascadingMessage,
   getMeeting,
-  listTeamUsers,
 } from '@/server/meetings';
 import { useRouter } from 'next/navigation';
 
@@ -21,31 +20,33 @@ type Rating = {
   userEmail: string | null;
 };
 
-type TeamUser = { id: string; name: string | null; email: string };
+type Attendee = { id: string; name: string | null; email: string };
 
 export function ConcludePanel({
   meetingId,
   canLead = false,
   canAdmin = false,
+  isAttendee = false,
 }: {
   meetingId: string;
   canLead?: boolean;
   canAdmin?: boolean;
+  isAttendee?: boolean;
 }) {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [myRating, setMyRating] = useState<number | null>(null);
   const [cascading, setCascading] = useState('');
   const [ending, setEnding] = useState(false);
-  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
   const router = useRouter();
 
   useEffect(() => {
     getMeetingRatings(meetingId).then(setRatings);
     getMeeting(meetingId).then((m) => {
       if (m?.cascadingMessage) setCascading(m.cascadingMessage);
+      if (m?.attendees) setAttendees(m.attendees as Attendee[]);
     });
-    if (canAdmin) listTeamUsers().then(setTeamUsers);
-  }, [meetingId, canAdmin]);
+  }, [meetingId]);
 
   const avg =
     ratings.length > 0
@@ -64,7 +65,7 @@ export function ConcludePanel({
   }
 
   const ratingByUser = new Map(ratings.map((r) => [r.userId, r.rating]));
-  const unrated = teamUsers.filter((u) => !ratingByUser.has(u.id));
+  const unrated = attendees.filter((u) => !ratingByUser.has(u.id));
 
   return (
     <div className="space-y-6 max-w-lg">
@@ -84,19 +85,25 @@ export function ConcludePanel({
 
       <div className="space-y-3">
         <h3 className="font-medium">Rate this meeting (1–10)</h3>
-        <div className="flex gap-1">
-          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-            <Button
-              key={n}
-              variant={myRating === n ? 'default' : 'outline'}
-              size="sm"
-              className="w-9 h-9"
-              onClick={() => submitRating(n)}
-            >
-              {n}
-            </Button>
-          ))}
-        </div>
+        {isAttendee ? (
+          <div className="flex gap-1">
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <Button
+                key={n}
+                variant={myRating === n ? 'default' : 'outline'}
+                size="sm"
+                className="w-9 h-9"
+                onClick={() => submitRating(n)}
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Only attendees of this meeting can submit a rating.
+          </p>
+        )}
         <div className="text-sm text-muted-foreground">
           Average: <span className="font-medium text-foreground">{avg}</span>
           {' '}({ratings.length} rating{ratings.length !== 1 ? 's' : ''})

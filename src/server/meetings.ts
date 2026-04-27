@@ -28,12 +28,19 @@ async function requireUser() {
 }
 
 export async function startMeeting(type: 'L10' | 'quarterly' | 'annual' = 'L10') {
-  await requireRole('leader');
+  const { user } = await requireRole('leader');
   const active = await getActiveMeeting();
   if (active) throw new Error('A meeting is already in progress');
+  const [dbUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, user.id));
+  const attendees = dbUser
+    ? [{ id: dbUser.id, name: dbUser.name, email: dbUser.email }]
+    : [];
   const [created] = await db
     .insert(meetings)
-    .values({ type, attendees: [], status: 'live' })
+    .values({ type, attendees, status: 'live' })
     .returning();
   revalidatePath('/meeting/live');
   revalidatePath('/meeting/upcoming');
@@ -59,7 +66,7 @@ export async function createDraftMeeting(input: {
 }
 
 export async function activateMeeting(meetingId: string) {
-  await requireRole('leader');
+  const { user } = await requireRole('leader');
   const active = await getActiveMeeting();
   if (active && active.id !== meetingId) {
     throw new Error('A meeting is already in progress');
@@ -71,9 +78,21 @@ export async function activateMeeting(meetingId: string) {
   if (!meeting) throw new Error('Meeting not found');
   if (meeting.status === 'concluded') throw new Error('Meeting already concluded');
 
+  const attendees = (meeting.attendees as { id: string; name: string | null; email: string }[]) || [];
+  let nextAttendees = attendees;
+  if (!attendees.some((a) => a.id === user.id)) {
+    const [dbUser] = await db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, user.id));
+    if (dbUser) {
+      nextAttendees = [...attendees, { id: dbUser.id, name: dbUser.name, email: dbUser.email }];
+    }
+  }
+
   await db
     .update(meetings)
-    .set({ status: 'live', startedAt: new Date() })
+    .set({ status: 'live', startedAt: new Date(), attendees: nextAttendees })
     .where(eq(meetings.id, meetingId));
   revalidatePath('/meeting/live');
   revalidatePath('/meeting/upcoming');
@@ -246,6 +265,12 @@ export async function rateMeetingOnBehalf(
   rating: number,
 ) {
   await requireRole('admin');
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string }[]) || [];
+  if (!attendees.some((a) => a.id === userId)) {
+    throw new Error('Only attendees can be rated for this meeting');
+  }
   await db
     .insert(meetingRatings)
     .values({ meetingId, userId, rating })
@@ -258,6 +283,12 @@ export async function rateMeetingOnBehalf(
 
 export async function rateMeeting(meetingId: string, rating: number) {
   const user = await requireUser();
+  const meeting = await getMeeting(meetingId);
+  if (!meeting) throw new Error('Meeting not found');
+  const attendees = (meeting.attendees as { id: string }[]) || [];
+  if (!attendees.some((a) => a.id === user.id)) {
+    throw new Error('Only attendees can rate this meeting');
+  }
   await db
     .insert(meetingRatings)
     .values({ meetingId, userId: user.id, rating })

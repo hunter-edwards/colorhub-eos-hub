@@ -172,6 +172,17 @@ export function buildAdaptiveCard(
   summary: string,
   meetingUrl?: string
 ): AdaptiveCard {
+  const trimmedSummary = summary?.trim();
+  const narrativeBlock: Block | null = trimmedSummary
+    ? {
+        type: 'TextBlock',
+        text: `_${trimmedSummary}_`,
+        wrap: true,
+        isSubtle: true,
+        spacing: 'Small',
+      }
+    : null;
+
   const sections: Block[] = [
     {
       type: 'TextBlock',
@@ -179,6 +190,7 @@ export function buildAdaptiveCard(
       weight: 'Bolder',
       text: `L10 Meeting — ${ctx.meetingDate}`,
     },
+    narrativeBlock,
     healthSection(ctx),
     scorecardSection(ctx),
     rockSection(ctx),
@@ -186,14 +198,6 @@ export function buildAdaptiveCard(
     issuesSection(ctx),
     todosSection(ctx),
     cascadingSection(ctx),
-    {
-      type: 'Container',
-      separator: true,
-      items: [
-        sectionHeader('AI Summary', 'accent'),
-        { type: 'TextBlock', text: summary, wrap: true, isSubtle: true, size: 'Small' },
-      ],
-    },
   ].filter((s): s is Block => s !== null);
 
   const content: AdaptiveCard['attachments'][0]['content'] = {

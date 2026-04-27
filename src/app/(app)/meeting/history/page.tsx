@@ -14,41 +14,59 @@ export default async function MeetingHistoryPage() {
       )}
 
       <div className="space-y-2">
-        {meetings.map((m) => (
-          <Link
-            key={m.id}
-            href={`/meeting/history/${m.id}`}
-            className="flex items-center gap-4 px-4 py-3 rounded-md hover:bg-accent"
-          >
-            <div className="flex-1">
-              <div className="text-sm font-medium">
-                {new Date(m.startedAt).toLocaleDateString('en-US', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
+        {meetings.map((m) => {
+          const isDraft = m.status === 'draft';
+          const isLive = m.status === 'live';
+          const dateSource = isDraft && m.scheduledFor ? m.scheduledFor : m.startedAt;
+          const href = isDraft
+            ? `/meeting/${m.id}/prep`
+            : isLive
+              ? '/meeting/live'
+              : `/meeting/history/${m.id}`;
+          return (
+            <Link
+              key={m.id}
+              href={href}
+              className="flex items-center gap-4 px-4 py-3 rounded-md hover:bg-accent"
+            >
+              <div className="flex-1">
+                <div className="text-sm font-medium">
+                  {new Date(dateSource).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {isDraft ? (
+                    <>Scheduled {new Date(dateSource).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                  ) : (
+                    <>
+                      {new Date(m.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {m.endedAt && (
+                        <> — {new Date(m.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(m.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {m.endedAt && (
-                  <> — {new Date(m.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
-                )}
-              </div>
-            </div>
-            <Badge variant="secondary">{m.type}</Badge>
-            {m.ratingAvg && (
-              <span className="text-sm font-medium">{m.ratingAvg}/10</span>
-            )}
-            {m.aiSummaryMd ? (
-              <Badge variant="default">Summary</Badge>
-            ) : m.endedAt ? (
-              <Badge variant="destructive">No summary</Badge>
-            ) : (
-              <Badge variant="outline">In progress</Badge>
-            )}
-          </Link>
-        ))}
+              <Badge variant="secondary">{m.type}</Badge>
+              {m.ratingAvg && (
+                <span className="text-sm font-medium">{m.ratingAvg}/10</span>
+              )}
+              {isDraft ? (
+                <Badge variant="outline">Upcoming</Badge>
+              ) : isLive ? (
+                <Badge variant="default">In progress</Badge>
+              ) : m.aiSummaryMd ? (
+                <Badge variant="default">Summary</Badge>
+              ) : (
+                <Badge variant="destructive">No summary</Badge>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

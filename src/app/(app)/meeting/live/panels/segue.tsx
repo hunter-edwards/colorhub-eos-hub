@@ -1,45 +1,13 @@
-'use client';
-
-import { useState } from 'react';
-import { Input } from '@/components/ui/input';
-
-export function SeguePanel({ meetingId }: { meetingId: string }) {
-  const [entries, setEntries] = useState<{ name: string; text: string }[]>([
-    { name: '', text: '' },
-  ]);
-
+export function SeguePanel() {
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Share one personal and one professional good news.
-      </p>
-      {entries.map((entry, i) => (
-        <div key={i} className="flex gap-2">
-          <Input
-            placeholder="Name"
-            className="w-32"
-            value={entry.name}
-            onChange={(e) => {
-              const next = [...entries];
-              next[i] = { ...next[i], name: e.target.value };
-              setEntries(next);
-            }}
-          />
-          <Input
-            placeholder="Good news..."
-            className="flex-1"
-            value={entry.text}
-            onChange={(e) => {
-              const next = [...entries];
-              next[i] = { ...next[i], text: e.target.value };
-              if (i === entries.length - 1 && e.target.value) {
-                next.push({ name: '', text: '' });
-              }
-              setEntries(next);
-            }}
-          />
-        </div>
-      ))}
+    <div className="flex items-center justify-center h-full min-h-40">
+      <div className="text-center space-y-2">
+        <p className="text-lg font-medium">Segue</p>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          Go around the room: one personal good news, one professional good
+          news. The timer in the header is the only clock that matters.
+        </p>
+      </div>
     </div>
   );
 }

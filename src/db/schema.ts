@@ -166,6 +166,15 @@ export const teamSettings = pgTable('team_settings', {
   teamsWebhookUrl: text('teams_webhook_url'),
 });
 
+export const knackSyncLog = pgTable('knack_sync_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  syncedAt: timestamp('synced_at').defaultNow().notNull(),
+  weeksUpdated: integer('weeks_updated').notNull(),
+  weeksRequested: integer('weeks_requested').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  ok: boolean('ok').notNull(),
+});
+
 // --- Phase 13: User Profiles (profileColor added to users) ---
 
 // Phase 14: Core Values

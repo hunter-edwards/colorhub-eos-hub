@@ -250,33 +250,42 @@ export default async function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentMeetings.map((m) => (
-                  <tr key={m.id} className="border-b border-border/40 last:border-0 hover:bg-accent/30">
-                    <td className="px-3 py-2.5">
-                      <Link
-                        href={`/meeting/history/${m.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {formatShortDate(m.startedAt)}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{m.type}</td>
-                    <td className="px-3 py-2.5 tabular-nums">
-                      {m.ratingAvg ? (
-                        <span className="font-medium">{m.ratingAvg}<span className="text-muted-foreground">/10</span></span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {m.endedAt ? (
-                        <Badge variant="secondary" className="text-[10px]">Completed</Badge>
-                      ) : (
-                        <Badge variant="default" className="text-[10px]">In Progress</Badge>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {recentMeetings.map((m) => {
+                  const isDraft = m.status === 'draft';
+                  const isLive = m.status === 'live';
+                  const dateSource = isDraft && m.scheduledFor ? m.scheduledFor : m.startedAt;
+                  const href = isDraft
+                    ? `/meeting/${m.id}/prep`
+                    : isLive
+                      ? '/meeting/live'
+                      : `/meeting/history/${m.id}`;
+                  return (
+                    <tr key={m.id} className="border-b border-border/40 last:border-0 hover:bg-accent/30">
+                      <td className="px-3 py-2.5">
+                        <Link href={href} className="font-medium hover:underline">
+                          {formatShortDate(dateSource)}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{m.type}</td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {m.ratingAvg ? (
+                          <span className="font-medium">{m.ratingAvg}<span className="text-muted-foreground">/10</span></span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {isDraft ? (
+                          <Badge variant="outline" className="text-[10px]">Upcoming</Badge>
+                        ) : isLive ? (
+                          <Badge variant="default" className="text-[10px]">In Progress</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">Completed</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
