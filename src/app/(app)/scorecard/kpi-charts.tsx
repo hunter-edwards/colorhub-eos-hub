@@ -56,13 +56,21 @@ const KPI_DEFINITIONS: Record<string, {
     chartType: 'bar',
     drilldown: true,
   },
-  'Parent Jobs Invoiced': {
-    description: 'Count of parent jobs fully invoiced this week.',
-    fields: 'field_798 (invoiced flag), field_534 (parent job #), field_1589 (customer #), field_2292 (dateSentToInvoicing)',
-    formula: 'Group runs by customer + parent job. A job counts as invoiced when ALL its runs have field_798 = "Yes". Week = MAX(field_2292) across the job\'s runs.',
+  'Runs Invoiced': {
+    description: 'Count of runs invoiced this week (customer billed).',
+    fields: 'object_10.field_121 (postedDate), object_10.field_764 (invoiceStatus), object_10.field_80 (run_invoicing)',
+    formula: 'Pull invoice records (object_10) where field_764 = "Added Into Quickbooks and Sent" and field_121 (postedDate) falls in the week. Count = unique runs across field_80 connections. A run on multiple invoices counts once, bucketed by its earliest posted date.',
     color: '#0d9488',
     chartType: 'bar',
-    drilldown: true,
+    drilldown: false,
+  },
+  'Avg Days Sent\u2192Invoiced': {
+    description: 'Average calendar days from "sent to invoicing" to invoice posted.',
+    fields: 'object_10.field_121 (postedDate), object_1.field_2292 (dateSentToInvoicing)',
+    formula: 'For each run invoiced this week: days = invoice.postedDate \u2212 run.dateSentToInvoicing. Average across all invoiced runs that have a dateSentToInvoicing. Lower is better.',
+    color: '#a855f7',
+    chartType: 'line',
+    drilldown: false,
   },
   'Avg Days Order\u2192Complete': {
     description: 'Average calendar days from order to completion.',
@@ -93,8 +101,9 @@ const KPI_DEFINITIONS: Record<string, {
 const KPI_ORDER = [
   'Runs Completed',
   'Jobs Completed',
-  'Parent Jobs Invoiced',
+  'Runs Invoiced',
   'Weekly Revenue',
+  'Avg Days Sent\u2192Invoiced',
   'Avg Days Order\u2192Complete',
   'On-Time Delivery %',
 ];
@@ -148,10 +157,11 @@ type DrillColumn = 'completed' | 'ordered' | 'days' | 'due' | 'onTime' | 'revenu
 const METRIC_COLUMNS: Record<string, DrillColumn[]> = {
   'Runs Completed': ['completed'],
   'Jobs Completed': ['completed'],
-  'Parent Jobs Invoiced': ['completed', 'invoiced'],
   'Avg Days Order\u2192Complete': ['ordered', 'completed', 'days'],
   'On-Time Delivery %': ['due', 'completed', 'onTime'],
   'Weekly Revenue': ['completed', 'revenue'],
+  // 'Runs Invoiced' and 'Avg Days Sent\u2192Invoiced' are sourced from the
+  // invoice object \u2014 drill-down would need a separate fetch path; omitted.
 };
 
 function DrilldownTable({ runs, metricName }: { runs: DrilldownRun[]; metricName: string }) {

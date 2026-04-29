@@ -25,6 +25,16 @@ export type KnackConfig = {
   apiKey: string;
 };
 
+export type KnackInvoice = {
+  id: string;
+  postedDate: string | null; // ISO YYYY-MM-DD (field_121)
+  status: string;            // field_764
+  runIds: string[];          // field_80 — connected run record IDs
+};
+
+/** Invoice status that signals "fully posted, sent to QuickBooks". */
+export const INVOICE_STATUS_SENT = 'Added Into Quickbooks and Sent';
+
 export type KnackRun = {
   id: string;
   jobId: string;       // field_1700
@@ -226,6 +236,94 @@ export async function fetchRunsForParentJobs(
   return results.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 }
 
+// ── Invoice fetch helpers ──────────────────────────────────────────
+
+function parseInvoiceRecord(rec: Record<string, unknown>): KnackInvoice {
+  const conn = (rec.field_80_raw as Array<{ id?: string }>) ?? [];
+  return {
+    id: String(rec.id ?? ''),
+    postedDate: parseKnackDate(rec.field_121 as string),
+    status: String(rec.field_764 ?? ''),
+    runIds: conn.map((c) => c?.id).filter((x): x is string => !!x),
+  };
+}
+
+/**
+ * Fetch invoices (object_10) whose postedDate (field_121) falls in the
+ * given window AND whose status (field_764) is "Added Into Quickbooks
+ * and Sent". This is our canonical signal for "this run was actually
+ * billed to the customer".
+ *
+ * Knack date operators are exclusive on both sides. We pad the start
+ * boundary by one day and post-filter in JS to make the intent clear.
+ */
+export async function fetchSentInvoicesInRange(
+  config: KnackConfig,
+  startDate: string, // ISO YYYY-MM-DD inclusive
+  endDate: string    // ISO YYYY-MM-DD exclusive
+): Promise<KnackInvoice[]> {
+  const startMinus1 = addIsoDays(startDate, -1);
+  const filters = JSON.stringify([
+    { field: 'field_764', operator: 'is', value: INVOICE_STATUS_SENT },
+    { field: 'field_121', operator: 'is after', value: toKnackDate(startMinus1) },
+    { field: 'field_121', operator: 'is before', value: toKnackDate(endDate) },
+  ]);
+
+  const all: KnackInvoice[] = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const data = await knackFetch(
+      config,
+      `/objects/object_10/records?filters=${encodeURIComponent(filters)}&rows_per_page=1000&page=${page}`
+    ) as { total_pages: number; records: Record<string, unknown>[] };
+    totalPages = data.total_pages;
+    for (const rec of data.records) all.push(parseInvoiceRecord(rec));
+    page++;
+  }
+
+  return all.filter(
+    (inv) => inv.postedDate !== null && inv.postedDate >= startDate && inv.postedDate < endDate
+  );
+}
+
+/**
+ * Fetch run records (object_1) by their record IDs. Knack only exposes
+ * single-record GETs by ID, so we call them concurrently with a small
+ * cap to stay polite.
+ */
+const RUN_BY_ID_CONCURRENCY = 8;
+
+export async function fetchRunsByIds(
+  config: KnackConfig,
+  ids: string[]
+): Promise<KnackRun[]> {
+  if (ids.length === 0) return [];
+  const unique = [...new Set(ids)];
+  const results: KnackRun[] = [];
+  for (let i = 0; i < unique.length; i += RUN_BY_ID_CONCURRENCY) {
+    const slice = unique.slice(i, i + RUN_BY_ID_CONCURRENCY);
+    const batch = await Promise.all(
+      slice.map(async (id) => {
+        try {
+          const data = await knackFetch(config, `/objects/object_1/records/${id}`) as Record<string, unknown>;
+          return parseRunRecord(data);
+        } catch {
+          return null;
+        }
+      })
+    );
+    for (const r of batch) if (r) results.push(r);
+  }
+  return results;
+}
+
+function addIsoDays(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 async function paginate(config: KnackConfig, filters: string): Promise<KnackRun[]> {
   const allRuns: KnackRun[] = [];
   let page = 1;
@@ -263,6 +361,78 @@ export type WeeklyKPIs = {
   onTimeDeliveryPct: number | null;
   weeklyRevenue: number;
 };
+
+export type WeeklyInvoiceKPIs = {
+  weekStart: string;
+  runsInvoiced: number;            // unique runs across invoices posted this week
+  avgDaysSentToInvoiced: number | null; // avg(postedDate − run.dateSentToInvoicing)
+};
+
+/**
+ * Compute weekly invoice-side KPIs from invoice records (object_10) and
+ * the run records they reference (object_1).
+ *
+ *   runsInvoiced          = unique run IDs across invoices posted in the week
+ *   avgDaysSentToInvoiced = avg of (postedDate − run.dateSentToInvoicing)
+ *                           for each unique run, using the EARLIEST
+ *                           posted-date when a run is on multiple invoices.
+ *                           Runs without a dateSentToInvoicing are skipped
+ *                           in the average but still counted in runsInvoiced.
+ */
+export function computeInvoiceKPIs(
+  invoices: KnackInvoice[],
+  invoicedRuns: KnackRun[],
+  weekStarts: string[]
+): WeeklyInvoiceKPIs[] {
+  const runById = new Map(invoicedRuns.map((r) => [r.id, r]));
+
+  // First, map each runId to the EARLIEST postedDate across all invoices.
+  const earliestPostedByRun = new Map<string, string>();
+  for (const inv of invoices) {
+    if (!inv.postedDate) continue;
+    for (const runId of inv.runIds) {
+      const prev = earliestPostedByRun.get(runId);
+      if (!prev || inv.postedDate < prev) {
+        earliestPostedByRun.set(runId, inv.postedDate);
+      }
+    }
+  }
+
+  return weekStarts.map((weekStart) => {
+    const weekEnd = addDays(weekStart, 7);
+    const runsInWeek: string[] = [];
+    const dayDiffs: number[] = [];
+
+    for (const [runId, postedDate] of earliestPostedByRun) {
+      if (postedDate < weekStart || postedDate >= weekEnd) continue;
+      runsInWeek.push(runId);
+
+      const run = runById.get(runId);
+      if (!run?.dateSentToInvoicing) continue;
+      const sent = new Date(run.dateSentToInvoicing + 'T00:00:00Z').getTime();
+      const posted = new Date(postedDate + 'T00:00:00Z').getTime();
+      const days = (posted - sent) / (1000 * 60 * 60 * 24);
+      // A run cannot be invoiced before it's sent to invoicing. When this
+      // happens it means field_2292 (dateSentToInvoicing) was overwritten
+      // by a later rule re-fire (e.g. the 04/21 and 04/28 bulk-stamp
+      // events), so the original "sent" date is gone. Skip rather than
+      // pollute the average with negative days.
+      if (days < 0) continue;
+      dayDiffs.push(days);
+    }
+
+    const avg =
+      dayDiffs.length === 0
+        ? null
+        : Math.round((dayDiffs.reduce((a, b) => a + b, 0) / dayDiffs.length) * 10) / 10;
+
+    return {
+      weekStart,
+      runsInvoiced: runsInWeek.length,
+      avgDaysSentToInvoiced: avg,
+    };
+  });
+}
 
 /**
  * Compute weekly KPIs using field_2292 (dateSentToInvoicing) as the

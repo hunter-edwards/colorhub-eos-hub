@@ -8,7 +8,10 @@ import { desc } from 'drizzle-orm';
 import {
   fetchCompletedRuns,
   fetchRunsForParentJobs,
+  fetchSentInvoicesInRange,
+  fetchRunsByIds,
   computeWeeklyKPIs,
+  computeInvoiceKPIs,
   type KnackConfig,
 } from '@/lib/knack';
 import { getWeekStarts } from '@/lib/scorecard-utils';
@@ -31,7 +34,8 @@ function getKnackConfig(): KnackConfig | null {
 const KPI_METRIC_MAP = {
   runsCompleted: 'Runs Completed',
   jobsCompleted: 'Jobs Completed',
-  parentJobsInvoiced: 'Parent Jobs Invoiced',
+  runsInvoiced: 'Runs Invoiced',
+  avgDaysSentToInvoiced: 'Avg Days Sent→Invoiced',
   avgDaysOrderToComplete: 'Avg Days Order→Complete',
   onTimeDeliveryPct: 'On-Time Delivery %',
   weeklyRevenue: 'Weekly Revenue',
@@ -64,20 +68,47 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
     const startDate = weeks[weeks.length - 1]; // earliest week
     const endDate = addDays(weeks[0], 7);       // end of current week
 
-    // 1. Runs completed in the window (field_2292 date in range)
+    // 1. In parallel: completed runs (by field_2292) AND invoices posted in
+    //    the window (by field_121, status="Added Into Quickbooks and Sent").
     const t1 = Date.now();
-    const completedRuns = await fetchCompletedRuns(config, startDate, endDate);
+    const [completedRuns, invoices] = await Promise.all([
+      fetchCompletedRuns(config, startDate, endDate),
+      fetchSentInvoicesInRange(config, startDate, endDate),
+    ]);
     const t1Ms = Date.now() - t1;
 
-    // 2. For parent jobs touched by those runs, pull every run (any date)
-    //    so we can check if ALL runs across all parts are completed.
+    // 2. In parallel: every run for parent jobs touched by completed runs
+    //    (so we can check "all parts complete"), AND every run referenced
+    //    by an invoice (so we can compute days from sent→invoiced).
     const parentJobs = [...new Set(completedRuns.map((r) => r.parentJob).filter(Boolean))];
+    const invoicedRunIds = [...new Set(invoices.flatMap((i) => i.runIds))];
     const t2 = Date.now();
-    const allJobRuns = await fetchRunsForParentJobs(config, parentJobs);
+    const [allJobRuns, invoicedRuns] = await Promise.all([
+      fetchRunsForParentJobs(config, parentJobs),
+      fetchRunsByIds(config, invoicedRunIds),
+    ]);
     const t2Ms = Date.now() - t2;
 
     const t3 = Date.now();
-    const weeklyKPIs = computeWeeklyKPIs(completedRuns, allJobRuns, weeks);
+    const completedKPIs = computeWeeklyKPIs(completedRuns, allJobRuns, weeks);
+    const invoiceKPIs = computeInvoiceKPIs(invoices, invoicedRuns, weeks);
+
+    // Merge per-week KPIs into a single record keyed by KPIKey.
+    const invoiceByWeek = new Map(invoiceKPIs.map((k) => [k.weekStart, k]));
+    const weeklyKPIs = completedKPIs.map((week) => {
+      const inv = invoiceByWeek.get(week.weekStart);
+      return {
+        weekStart: week.weekStart,
+        runsCompleted: week.runsCompleted,
+        jobsCompleted: week.jobsCompleted,
+        runsInvoiced: inv?.runsInvoiced ?? 0,
+        avgDaysSentToInvoiced: inv?.avgDaysSentToInvoiced ?? null,
+        avgDaysOrderToComplete: week.avgDaysOrderToComplete,
+        onTimeDeliveryPct: week.onTimeDeliveryPct,
+        weeklyRevenue: week.weeklyRevenue,
+      } satisfies Record<'weekStart', string> & Record<KPIKey, number | null>;
+    });
+
     const metricIds = await ensureMetrics(user.id);
 
     for (const week of weeklyKPIs) {
@@ -103,8 +134,10 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
 
     const totalMs = Date.now() - totalStart;
     console.log(
-      `[knack-sync] weeks=${weekCount} completedRuns=${completedRuns.length} (${t1Ms}ms) · ` +
-        `parentJobs=${parentJobs.length} allJobRuns=${allJobRuns.length} (${t2Ms}ms) · ` +
+      `[knack-sync] weeks=${weekCount} ` +
+        `completedRuns=${completedRuns.length} invoices=${invoices.length} (${t1Ms}ms) · ` +
+        `parentJobs=${parentJobs.length} allJobRuns=${allJobRuns.length} ` +
+        `invoicedRuns=${invoicedRuns.length}/${invoicedRunIds.length} (${t2Ms}ms) · ` +
         `upsert=${weeklyKPIs.length * Object.keys(metricIds).length} (${t3Ms}ms) · ` +
         `total=${totalMs}ms`
     );
@@ -157,7 +190,8 @@ async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
   const kpiConfigs: Record<KPIKey, { goal: string; comparator: 'gte' | 'lte'; unit: string }> = {
     runsCompleted: { goal: '20', comparator: 'gte', unit: 'runs' },
     jobsCompleted: { goal: '10', comparator: 'gte', unit: 'jobs' },
-    parentJobsInvoiced: { goal: '10', comparator: 'gte', unit: 'jobs' },
+    runsInvoiced: { goal: '20', comparator: 'gte', unit: 'runs' },
+    avgDaysSentToInvoiced: { goal: '5', comparator: 'lte', unit: 'days' },
     avgDaysOrderToComplete: { goal: '14', comparator: 'lte', unit: 'days' },
     onTimeDeliveryPct: { goal: '90', comparator: 'gte', unit: '%' },
     weeklyRevenue: { goal: '50000', comparator: 'gte', unit: '$' },

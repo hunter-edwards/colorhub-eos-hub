@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { computeWeeklyKPIs, parseInvoicingDate, type KnackRun } from './knack';
+import {
+  computeWeeklyKPIs,
+  computeInvoiceKPIs,
+  parseInvoicingDate,
+  type KnackRun,
+  type KnackInvoice,
+} from './knack';
 
 function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
   return {
@@ -186,5 +192,141 @@ describe('computeWeeklyKPIs', () => {
     // Job's completion week = Apr 20 (MAX of the two dates)
     expect(result.find((r) => r.weekStart === '2026-04-13')!.jobsCompleted).toBe(0);
     expect(result.find((r) => r.weekStart === '2026-04-20')!.jobsCompleted).toBe(1);
+  });
+});
+
+describe('computeInvoiceKPIs', () => {
+  const weeks = ['2026-04-20'];
+
+  function makeInvoice(overrides: Partial<KnackInvoice> = {}): KnackInvoice {
+    return {
+      id: 'inv1',
+      postedDate: '2026-04-22',
+      status: 'Added Into Quickbooks and Sent',
+      runIds: ['r1'],
+      ...overrides,
+    };
+  }
+
+  it('counts unique runs across invoices posted in the week', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-20', runIds: ['r1', 'r2'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-22', runIds: ['r3'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-15' }),
+      makeRun({ id: 'r2', dateSentToInvoicing: '2026-04-15' }),
+      makeRun({ id: 'r3', dateSentToInvoicing: '2026-04-18' }),
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].runsInvoiced).toBe(3);
+  });
+
+  it('de-duplicates a run that appears on multiple invoices in the same week', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-20', runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-22', runIds: ['r1', 'r2'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-15' }),
+      makeRun({ id: 'r2', dateSentToInvoicing: '2026-04-15' }),
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].runsInvoiced).toBe(2);
+  });
+
+  it('ignores invoices outside the week window', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-19', runIds: ['r1'] }), // before week
+      makeInvoice({ id: 'i2', postedDate: '2026-04-27', runIds: ['r2'] }), // after week
+    ];
+    const runs = [makeRun({ id: 'r1' }), makeRun({ id: 'r2' })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].runsInvoiced).toBe(0);
+  });
+
+  it('calculates avg days sent→invoiced (postedDate − dateSentToInvoicing)', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-22', runIds: ['r1', 'r2'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-20' }), // 2 days
+      makeRun({ id: 'r2', dateSentToInvoicing: '2026-04-18' }), // 4 days
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].avgDaysSentToInvoiced).toBe(3);
+  });
+
+  it('skips runs missing dateSentToInvoicing in the avg', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-22', runIds: ['r1', 'r2'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-20' }), // 2 days
+      makeRun({ id: 'r2', dateSentToInvoicing: null }),         // skip
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].avgDaysSentToInvoiced).toBe(2);
+    expect(result[0].runsInvoiced).toBe(2); // count still includes both
+  });
+
+  it('returns null avg when no run has a dateSentToInvoicing', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-22', runIds: ['r1'] }),
+    ];
+    const runs = [makeRun({ id: 'r1', dateSentToInvoicing: null })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].runsInvoiced).toBe(1);
+    expect(result[0].avgDaysSentToInvoiced).toBeNull();
+  });
+
+  it('uses the earliest invoice posted-date when a run is on multiple invoices', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-23', runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-21', runIds: ['r1'] }), // earlier
+    ];
+    const runs = [makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-20' })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    // Earliest posted = 4/21, sent = 4/20 → 1 day
+    expect(result[0].avgDaysSentToInvoiced).toBe(1);
+  });
+
+  it('handles empty invoices', () => {
+    const result = computeInvoiceKPIs([], [], weeks);
+    expect(result[0].runsInvoiced).toBe(0);
+    expect(result[0].avgDaysSentToInvoiced).toBeNull();
+  });
+
+  it('skips runs whose dateSentToInvoicing is AFTER postedDate (rule-refire artifact)', () => {
+    // After a bulk re-stamp event, field_2292 can be overwritten with a
+    // date later than the original "sent" — and later than the invoice
+    // posted date. Those records should not poison the average.
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-22', runIds: ['r1', 'r2', 'r3'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-20' }), // 2 days (valid)
+      makeRun({ id: 'r2', dateSentToInvoicing: '2026-04-25' }), // -3 days (skip)
+      makeRun({ id: 'r3', dateSentToInvoicing: '2026-04-21' }), // 1 day (valid)
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].runsInvoiced).toBe(3);                // count keeps all
+    expect(result[0].avgDaysSentToInvoiced).toBe(1.5);     // (2 + 1) / 2
+  });
+
+  it('buckets across multiple weeks correctly', () => {
+    const multiWeeks = ['2026-04-13', '2026-04-20'];
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-15', runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-22', runIds: ['r2', 'r3'] }),
+    ];
+    const runs = [
+      makeRun({ id: 'r1', dateSentToInvoicing: '2026-04-13' }),
+      makeRun({ id: 'r2', dateSentToInvoicing: '2026-04-20' }),
+      makeRun({ id: 'r3', dateSentToInvoicing: '2026-04-21' }),
+    ];
+    const result = computeInvoiceKPIs(invoices, runs, multiWeeks);
+    expect(result.find((r) => r.weekStart === '2026-04-13')!.runsInvoiced).toBe(1);
+    expect(result.find((r) => r.weekStart === '2026-04-20')!.runsInvoiced).toBe(2);
   });
 });
