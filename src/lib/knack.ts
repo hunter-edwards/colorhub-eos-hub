@@ -29,6 +29,7 @@ export type KnackInvoice = {
   id: string;
   postedDate: string | null; // ISO YYYY-MM-DD (field_121)
   status: string;            // field_764
+  amount: number;            // field_805 (newGrandTotalInvoiceAmount)
   runIds: string[];          // field_80 — connected run record IDs
 };
 
@@ -242,6 +243,7 @@ function parseInvoiceRecord(rec: Record<string, unknown>): KnackInvoice {
     id: String(rec.id ?? ''),
     postedDate: parseKnackDate(rec.field_121 as string),
     status: String(rec.field_764 ?? ''),
+    amount: parseMoney(rec.field_805 as string),
     runIds: conn.map((c) => c?.id).filter((x): x is string => !!x),
   };
 }
@@ -364,6 +366,7 @@ export type WeeklyInvoiceKPIs = {
   weekStart: string;
   runsInvoiced: number;            // unique runs across invoices posted this week
   avgDaysSentToInvoiced: number | null; // avg(postedDate − run.dateSentToInvoicing)
+  weeklyRevenue: number;           // sum of invoice.amount (field_805) for invoices posted this week
 };
 
 /**
@@ -424,10 +427,20 @@ export function computeInvoiceKPIs(
         ? null
         : Math.round((dayDiffs.reduce((a, b) => a + b, 0) / dayDiffs.length) * 10) / 10;
 
+    // Revenue: sum field_805 across invoices posted in the week. Unlike
+    // the per-run sums, this counts every invoice line — multiple invoices
+    // for the same run both contribute (intentional; they are distinct
+    // billings from accounting's POV).
+    const weeklyRevenue = invoices.reduce((sum, inv) => {
+      if (!inv.postedDate || inv.postedDate < weekStart || inv.postedDate >= weekEnd) return sum;
+      return sum + inv.amount;
+    }, 0);
+
     return {
       weekStart,
       runsInvoiced: runsInWeek.length,
       avgDaysSentToInvoiced: avg,
+      weeklyRevenue,
     };
   });
 }

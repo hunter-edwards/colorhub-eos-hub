@@ -89,12 +89,12 @@ const KPI_DEFINITIONS: Record<string, {
     drilldown: true,
   },
   'Weekly Revenue': {
-    description: 'Total revenue from runs completed this week.',
-    fields: 'field_961 (revenue $), field_2292 (dateSentToInvoicing)',
-    formula: 'Sum of field_961 (parsed from "$X,XXX.XX" format) for all runs with field_2292 in the week. ~70% fill rate on this field.',
+    description: 'Total revenue invoiced this week (customer billed amount).',
+    fields: 'object_10.field_805 (newGrandTotalInvoiceAmount), object_10.field_121 (postedDate), object_10.field_764 (invoiceStatus)',
+    formula: 'Sum of field_805 across invoices where field_764 = "Added Into Quickbooks and Sent" and field_121 falls in the week. Each invoice contributes once (not per run).',
     color: '#0891b2',
     chartType: 'bar',
-    drilldown: true,
+    drilldown: false,
   },
 };
 
@@ -159,9 +159,9 @@ const METRIC_COLUMNS: Record<string, DrillColumn[]> = {
   'Jobs Completed': ['completed'],
   'Avg Days Order\u2192Complete': ['ordered', 'completed', 'days'],
   'On-Time Delivery %': ['due', 'completed', 'onTime'],
-  'Weekly Revenue': ['completed', 'revenue'],
-  // 'Runs Invoiced' and 'Avg Days Sent\u2192Invoiced' are sourced from the
-  // invoice object \u2014 drill-down would need a separate fetch path; omitted.
+  // 'Weekly Revenue', 'Runs Invoiced', and 'Avg Days Sent\u2192Invoiced' are
+  // sourced from the invoice object \u2014 drill-down would need a separate
+  // fetch path; omitted for now.
 };
 
 function DrilldownTable({ runs, metricName }: { runs: DrilldownRun[]; metricName: string }) {

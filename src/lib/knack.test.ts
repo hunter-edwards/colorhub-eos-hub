@@ -202,6 +202,7 @@ describe('computeInvoiceKPIs', () => {
       id: 'inv1',
       postedDate: '2026-04-22',
       status: 'Added Into Quickbooks and Sent',
+      amount: 1000,
       runIds: ['r1'],
       ...overrides,
     };
@@ -294,6 +295,40 @@ describe('computeInvoiceKPIs', () => {
     const result = computeInvoiceKPIs([], [], weeks);
     expect(result[0].runsInvoiced).toBe(0);
     expect(result[0].avgDaysSentToInvoiced).toBeNull();
+    expect(result[0].weeklyRevenue).toBe(0);
+  });
+
+  it('sums invoice amounts (field_805) for the week', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-20', amount: 1500.5, runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-22', amount: 2750, runIds: ['r2'] }),
+    ];
+    const runs = [makeRun({ id: 'r1' }), makeRun({ id: 'r2' })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].weeklyRevenue).toBeCloseTo(4250.5, 2);
+  });
+
+  it('does NOT double-count revenue when a run is on multiple invoices in the same week', () => {
+    // Each invoice's amount is unique to that invoice; we always sum
+    // invoices, not runs, so multiple invoices for the same run still
+    // both contribute. This test documents that behavior.
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-20', amount: 1000, runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-21', amount: 500, runIds: ['r1'] }),
+    ];
+    const runs = [makeRun({ id: 'r1' })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].weeklyRevenue).toBe(1500);
+  });
+
+  it('excludes invoices outside the week from revenue', () => {
+    const invoices = [
+      makeInvoice({ id: 'i1', postedDate: '2026-04-19', amount: 999, runIds: ['r1'] }),
+      makeInvoice({ id: 'i2', postedDate: '2026-04-22', amount: 100, runIds: ['r2'] }),
+    ];
+    const runs = [makeRun({ id: 'r1' }), makeRun({ id: 'r2' })];
+    const result = computeInvoiceKPIs(invoices, runs, weeks);
+    expect(result[0].weeklyRevenue).toBe(100);
   });
 
   it('skips runs whose dateSentToInvoicing is AFTER postedDate (rule-refire artifact)', () => {
