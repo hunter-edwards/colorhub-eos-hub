@@ -158,6 +158,7 @@ describe('computeInvoiceKPIs', () => {
   function makeInvoice(overrides: Partial<KnackInvoice> = {}): KnackInvoice {
     return {
       id: 'inv1',
+      number: 'I-1000',
       postedDate: '2026-04-22',
       status: 'Added Into Quickbooks and Sent',
       amount: 1000,

@@ -14,7 +14,23 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { ChevronDown, TrendingUp, TrendingDown, Minus, ExternalLink, Info } from 'lucide-react';
-import { getCompletedRunsForWeek, type DrilldownRun } from '@/server/knack-sync';
+import {
+  getCompletedRunsForWeek,
+  getInvoicedRunsForWeek,
+  type DrilldownRun,
+  type InvoicedDrilldownRun,
+} from '@/server/knack-sync';
+
+/**
+ * Metrics whose drill-down is sourced from the invoice object (object_10)
+ * rather than the run object (object_1). Each row represents one
+ * (invoice, run) pairing posted in the week.
+ */
+const INVOICE_SOURCED_METRICS = new Set<string>([
+  'Runs Invoiced',
+  'Avg Days Shipped→Invoiced',
+  'Weekly Revenue',
+]);
 import { evaluateEntry } from '@/lib/scorecard-utils';
 
 type Metric = {
@@ -62,7 +78,7 @@ const KPI_DEFINITIONS: Record<string, {
     formula: 'Pull invoice records (object_10) where field_764 = "Added Into Quickbooks and Sent" and field_121 (postedDate) falls in the week. Count = unique runs across field_80 connections. A run on multiple invoices counts once, bucketed by its earliest posted date.',
     color: '#0d9488',
     chartType: 'bar',
-    drilldown: false,
+    drilldown: true,
   },
   'Avg Days Shipped\u2192Invoiced': {
     description: 'Average calendar days from shipped to invoice posted.',
@@ -70,7 +86,7 @@ const KPI_DEFINITIONS: Record<string, {
     formula: 'For each run invoiced this week: days = invoice.postedDate \u2212 run.shippedDate. Average across all invoiced runs that have a shippedDate. Lower is better.',
     color: '#a855f7',
     chartType: 'line',
-    drilldown: false,
+    drilldown: true,
   },
   'Avg Days Order\u2192Complete': {
     description: 'Average calendar days from order to ship.',
@@ -94,7 +110,7 @@ const KPI_DEFINITIONS: Record<string, {
     formula: 'Sum of field_805 across invoices where field_764 = "Added Into Quickbooks and Sent" and field_121 falls in the week. Each invoice contributes once (not per run).',
     color: '#0891b2',
     chartType: 'bar',
-    drilldown: false,
+    drilldown: true,
   },
 };
 
@@ -274,6 +290,119 @@ function DrilldownTable({ runs, metricName }: { runs: DrilldownRun[]; metricName
   );
 }
 
+// ── invoice-sourced drill-down table ────────────────────────
+
+function InvoicedDrilldownTable({
+  rows,
+  metricName,
+}: {
+  rows: InvoicedDrilldownRun[];
+  metricName: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
+        No invoices posted in this week.
+      </div>
+    );
+  }
+
+  // Header totals: dedupe by invoice id so a multi-run invoice contributes
+  // its amount only once, and the invoice count is accurate.
+  const seen = new Set<string>();
+  let totalRevenue = 0;
+  for (const r of rows) {
+    if (seen.has(r.invoiceId)) continue;
+    seen.add(r.invoiceId);
+    totalRevenue += r.invoiceAmount;
+  }
+  const invoiceCount = seen.size;
+  const runCount = rows.length;
+  const avgDays = (() => {
+    const days = rows.map((r) => r.daysToInvoice).filter((d): d is number => d != null);
+    if (days.length === 0) return null;
+    return Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10;
+  })();
+
+  // Show the per-invoice amount only on the first row of each invoice
+  // so the column reads cleanly down the page.
+  const firstSeenInvoice = new Set<string>();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
+        <span className="font-medium text-foreground">
+          {invoiceCount} invoice{invoiceCount === 1 ? '' : 's'} · {runCount} run{runCount === 1 ? '' : 's'}
+        </span>
+        <span className="text-muted-foreground">
+          {metricName === 'Avg Days Shipped→Invoiced' && avgDays != null && (
+            <>
+              Avg{' '}
+              <span className="font-medium text-foreground">{avgDays}d</span>
+              {' · '}
+            </>
+          )}
+          Total{' '}
+          <span className="font-medium text-foreground">
+            ${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </span>
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border/60">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/40">
+            <tr className="text-left text-muted-foreground">
+              <th className="px-3 py-2 font-medium">Invoice</th>
+              <th className="px-3 py-2 font-medium">Posted</th>
+              <th className="px-3 py-2 font-medium">Cust #</th>
+              <th className="px-3 py-2 font-medium">Customer</th>
+              <th className="px-3 py-2 font-medium">Job #</th>
+              <th className="px-3 py-2 font-medium">Shipped</th>
+              <th className="px-3 py-2 text-right font-medium">Days</th>
+              <th className="px-3 py-2 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const jobLabel = r.parentJob && r.partNumber
+                ? `${r.parentJob}-${r.partNumber}`
+                : r.jobId || '—';
+              const showAmount = !firstSeenInvoice.has(r.invoiceId);
+              if (showAmount) firstSeenInvoice.add(r.invoiceId);
+              return (
+                <tr key={`${r.invoiceId}-${r.id}-${i}`} className="border-t border-border/40 hover:bg-accent/40">
+                  <td className="px-3 py-2 font-mono text-[11px] tabular-nums">
+                    {r.invoiceNumber || '—'}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">{formatDate(r.postedDate)}</td>
+                  <td className="px-3 py-2 font-mono text-[11px] tabular-nums">{r.customer || '—'}</td>
+                  <td className="px-3 py-2 truncate max-w-[180px]" title={r.customerName}>
+                    {r.customerName || <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px] tabular-nums">{jobLabel}</td>
+                  <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                    {formatDate(r.shippedDate)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium">
+                    {r.daysToInvoice != null ? `${r.daysToInvoice}d` : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium">
+                    {showAmount && r.invoiceAmount > 0 ? (
+                      `$${r.invoiceAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── KPI card ────────────────────────────────────────────────
 
 function KPICard({
@@ -286,8 +415,10 @@ function KPICard({
   weeks: string[];
 }) {
   const def = KPI_DEFINITIONS[metric.name];
+  const isInvoiceSourced = INVOICE_SOURCED_METRICS.has(metric.name);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [runs, setRuns] = useState<DrilldownRun[] | null>(null);
+  const [invoicedRows, setInvoicedRows] = useState<InvoicedDrilldownRun[] | null>(null);
   const [pending, startTransition] = useTransition();
   const [showDefinition, setShowDefinition] = useState(false);
 
@@ -322,13 +453,20 @@ function KPICard({
     if (selectedWeek === weekStart) {
       setSelectedWeek(null);
       setRuns(null);
+      setInvoicedRows(null);
       return;
     }
     setSelectedWeek(weekStart);
     setRuns(null);
+    setInvoicedRows(null);
     startTransition(async () => {
-      const result = await getCompletedRunsForWeek(weekStart);
-      setRuns(result);
+      if (isInvoiceSourced) {
+        const result = await getInvoicedRunsForWeek(weekStart);
+        setInvoicedRows(result);
+      } else {
+        const result = await getCompletedRunsForWeek(weekStart);
+        setRuns(result);
+      }
     });
   }
 
@@ -550,13 +688,16 @@ function KPICard({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs">
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-medium">Runs for week of {formatWeek(selectedWeek)}</span>
+              <span className="font-medium">
+                {isInvoiceSourced ? 'Invoices' : 'Runs'} for week of {formatWeek(selectedWeek)}
+              </span>
             </div>
             <button
               type="button"
               onClick={() => {
                 setSelectedWeek(null);
                 setRuns(null);
+                setInvoicedRows(null);
               }}
               className="text-[11px] text-muted-foreground hover:text-foreground"
             >
@@ -566,7 +707,12 @@ function KPICard({
           {pending && (
             <div className="py-4 text-center text-xs text-muted-foreground">Loading…</div>
           )}
-          {!pending && runs && <DrilldownTable runs={runs} metricName={metric.name} />}
+          {!pending && !isInvoiceSourced && runs && (
+            <DrilldownTable runs={runs} metricName={metric.name} />
+          )}
+          {!pending && isInvoiceSourced && invoicedRows && (
+            <InvoicedDrilldownTable rows={invoicedRows} metricName={metric.name} />
+          )}
         </div>
       )}
 
