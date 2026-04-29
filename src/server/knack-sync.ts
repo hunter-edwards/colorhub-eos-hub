@@ -94,6 +94,8 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
     const invoiceKPIs = computeInvoiceKPIs(invoices, invoicedRuns, weeks);
 
     // Merge per-week KPIs into a single record keyed by KPIKey.
+    // Revenue comes from the invoice side (sum of field_805) — the run-side
+    // sum of field_961 has only ~70% fill rate and significantly understates.
     const invoiceByWeek = new Map(invoiceKPIs.map((k) => [k.weekStart, k]));
     const weeklyKPIs = completedKPIs.map((week) => {
       const inv = invoiceByWeek.get(week.weekStart);
@@ -105,7 +107,7 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
         avgDaysSentToInvoiced: inv?.avgDaysSentToInvoiced ?? null,
         avgDaysOrderToComplete: week.avgDaysOrderToComplete,
         onTimeDeliveryPct: week.onTimeDeliveryPct,
-        weeklyRevenue: week.weeklyRevenue,
+        weeklyRevenue: inv?.weeklyRevenue ?? 0,
       } satisfies Record<'weekStart', string> & Record<KPIKey, number | null>;
     });
 
