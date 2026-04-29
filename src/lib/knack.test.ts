@@ -19,7 +19,6 @@ function makeRun(overrides: Partial<KnackRun> = {}): KnackRun {
     shippedQty: 100,
     shipped: true,
     invoiced: true,
-    shipDate: '2026-04-13',
     orderDate: '2026-04-01',
     dueDate: '2026-04-15',
     dateSentToInvoicing: '2026-04-13',

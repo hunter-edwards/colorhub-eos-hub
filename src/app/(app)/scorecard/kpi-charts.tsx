@@ -81,9 +81,9 @@ const KPI_DEFINITIONS: Record<string, {
     drilldown: true,
   },
   'On-Time Delivery %': {
-    description: 'Percentage of runs completed on or before the due date.',
-    fields: 'field_972 (due/promise date), field_2292 (dateSentToInvoicing)',
-    formula: 'For runs with a due date: on-time if field_2292 <= field_972. Result = (onTimeCount / totalWithDueDate) * 100.',
+    description: 'Percentage of runs completed on or before the customer due date.',
+    fields: 'field_497 (orderDueDate, equation), field_2292 (dateSentToInvoicing)',
+    formula: 'For runs with a due date: on-time if field_2292 <= field_497. Result = (onTimeCount / totalWithDueDate) * 100.',
     color: '#9333ea',
     chartType: 'line',
     drilldown: true,

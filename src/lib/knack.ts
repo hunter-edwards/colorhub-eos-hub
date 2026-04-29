@@ -9,10 +9,10 @@
  *   field_8     ordered qty
  *   field_561   shipped qty (total pieces shipped)
  *   field_34    shipped flag        "Yes" / "No"
- *   field_798   invoiced flag       "Yes" / "No"
- *   field_497   ship date           e.g. "03/06/2026"
- *   field_969   order received date e.g. "01/28/2026"
- *   field_972   due/promise date    e.g. "03/04/2026"
+ *   field_798   passToInvoicing     "Yes" / "No" (Knack label; trails workflow)
+ *   field_497   orderDueDate        e.g. "03/06/2026" — customer due date (equation, falls back to runDueDate)
+ *   field_969   internalReprintEnteredDateStamp (NOT order-received; only set on reprints)
+ *   field_972   shippedButtonDateStamp (NOT due date; the "shipped" button click time)
  *   field_961   revenue             e.g. "$7,032.80" (~70% fill rate)
  *   field_2292  dateSentToInvoicing e.g. "04/16/2026" (auto-set by rule when field_798→Yes)
  *   field_510   customer name       e.g. "Harbor 3D LLC"
@@ -46,10 +46,9 @@ export type KnackRun = {
   shippedQty: number;  // field_561
   shipped: boolean;    // field_34
   invoiced: boolean;   // field_798
-  shipDate: string | null;    // field_497 → ISO date (planned)
-  orderDate: string | null;   // field_969 → ISO date
-  dueDate: string | null;     // field_972 → ISO date
-  dateSentToInvoicing: string | null; // field_2292 → ISO date (actual ship date)
+  orderDate: string | null;   // field_969 → ISO date (only set on reprints; mostly null)
+  dueDate: string | null;     // field_497 → ISO date (orderDueDate)
+  dateSentToInvoicing: string | null; // field_2292 → ISO date
   revenue: number;     // field_961
 };
 
@@ -130,9 +129,8 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     shippedQty: Number(rec.field_561) || 0,
     shipped: rec.field_34 === 'Yes',
     invoiced: rec.field_798 === 'Yes',
-    shipDate: parseKnackDate(rec.field_497 as string),
     orderDate: parseKnackDate(rec.field_969 as string),
-    dueDate: parseKnackDate(rec.field_972 as string),
+    dueDate: parseKnackDate(rec.field_497 as string),
     dateSentToInvoicing: parseInvoicingDate(rec.field_2292 as string),
     revenue: parseMoney(rec.field_961 as string),
   };
