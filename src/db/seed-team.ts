@@ -16,9 +16,11 @@ type SeedRole = 'admin' | 'leader' | 'member';
 const TEAM_MEMBERS: Array<{ name: string; email: string; title: string; manager: string | null; role: SeedRole }> = [
   { name: 'Biak Hmun Sang', email: 'biak@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
   { name: 'Cung Thang', email: 'cung@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
+  { name: 'Erin Hollandsworth', email: 'erin@colorhub.io', title: 'Team Member', manager: 'Tim Harris', role: 'member' },
   { name: 'Hunter Edwards', email: 'h.edwards.327@gmail.com', title: 'Operations and Account Coordinator', manager: 'Tim Harris', role: 'leader' },
   { name: 'Javier Alvarez Lopez', email: 'javier@colorhub.io', title: 'Industrial Maintenance Mechanic/Production Lead', manager: 'Tim Harris', role: 'member' },
   { name: 'Jill Harris', email: 'jill@colorhub.io', title: 'Office Admin', manager: 'Tim Harris', role: 'member' },
+  { name: 'Sean Arney', email: 'sean@colorhub.io', title: 'Team Member', manager: 'Tim Harris', role: 'member' },
   { name: 'Jonathan Sang', email: 'jonathan@colorhub.io', title: 'Die Cut Operator', manager: 'Tyler Valentine', role: 'member' },
   { name: 'Kyle Raduski', email: 'kyle@colorhub.io', title: 'Material Handler/Production Associate', manager: 'Tyler Valentine', role: 'member' },
   { name: 'Leigh Tamminga', email: 'leigh@colorhub.io', title: 'Production Associate', manager: 'Tyler Valentine', role: 'member' },
