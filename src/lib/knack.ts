@@ -27,6 +27,7 @@ export type KnackConfig = {
 
 export type KnackInvoice = {
   id: string;
+  number: string;            // field_77 (invoiceAutoNumber, e.g. "I-5076")
   postedDate: string | null; // ISO YYYY-MM-DD (field_121)
   status: string;            // field_764
   amount: number;            // field_805 (newGrandTotalInvoiceAmount)
@@ -234,6 +235,7 @@ function parseInvoiceRecord(rec: Record<string, unknown>): KnackInvoice {
   const conn = (rec.field_80_raw as Array<{ id?: string }>) ?? [];
   return {
     id: String(rec.id ?? ''),
+    number: String(rec.field_77 ?? ''),
     postedDate: parseKnackDate(rec.field_121 as string),
     status: String(rec.field_764 ?? ''),
     amount: parseMoney(rec.field_805 as string),

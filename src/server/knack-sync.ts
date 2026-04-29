@@ -287,3 +287,89 @@ function addDays(isoDate: string, days: number): string {
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Drill-down row for the invoice-sourced KPIs (Runs Invoiced,
+ * Avg Days Shipped→Invoiced, Weekly Revenue). One row per (invoice, run)
+ * pair. The same invoice can produce multiple rows when it covers
+ * several runs, so callers should de-duplicate by `invoiceId` when
+ * computing invoice-level totals (e.g. the revenue header).
+ */
+export type InvoicedDrilldownRun = {
+  id: string;                  // run id
+  jobId: string;
+  parentJob: string;
+  partNumber: string;
+  customer: string;
+  customerName: string;
+  shippedDate: string | null;
+  postedDate: string;          // invoice.field_121
+  daysToInvoice: number | null; // postedDate − shippedDate (clamped: null when shipped > posted)
+  invoiceId: string;
+  invoiceNumber: string;       // field_77 (e.g. "I-5076")
+  invoiceAmount: number;       // field_805 — per-invoice total, repeated on each row of the same invoice
+};
+
+/**
+ * Fetch the list of invoiced runs whose invoice's posted date falls
+ * within the given week. Used by the per-KPI drill-down for invoice-
+ * sourced metrics.
+ *
+ * Filters invoices to status="Added Into Quickbooks and Sent" — same
+ * filter the sync uses for Runs Invoiced / Weekly Revenue.
+ */
+export async function getInvoicedRunsForWeek(weekStart: string): Promise<InvoicedDrilldownRun[]> {
+  await requireUser();
+  const config = getKnackConfig();
+  if (!config) return [];
+
+  const weekEnd = addDays(weekStart, 7);
+  const invoices = await fetchSentInvoicesInRange(config, weekStart, weekEnd);
+  if (invoices.length === 0) return [];
+
+  const runIds = [...new Set(invoices.flatMap((i) => i.runIds))];
+  const runs = await fetchRunsByIds(config, runIds);
+  const runById = new Map(runs.map((r) => [r.id, r]));
+
+  const rows: InvoicedDrilldownRun[] = [];
+  for (const inv of invoices) {
+    if (!inv.postedDate) continue;
+    for (const runId of inv.runIds) {
+      const run = runById.get(runId);
+      if (!run) continue;
+
+      let daysToInvoice: number | null = null;
+      if (run.shippedDate) {
+        const shipped = new Date(run.shippedDate + 'T00:00:00').getTime();
+        const posted = new Date(inv.postedDate + 'T00:00:00').getTime();
+        const days = Math.round((posted - shipped) / (1000 * 60 * 60 * 24));
+        // A run cannot be invoiced before it ships; treat negative as null.
+        daysToInvoice = days >= 0 ? days : null;
+      }
+
+      rows.push({
+        id: run.id,
+        jobId: run.jobId,
+        parentJob: run.parentJob,
+        partNumber: run.partNumber,
+        customer: run.customer,
+        customerName: run.customerName,
+        shippedDate: run.shippedDate,
+        postedDate: inv.postedDate,
+        daysToInvoice,
+        invoiceId: inv.id,
+        invoiceNumber: inv.number,
+        invoiceAmount: inv.amount,
+      });
+    }
+  }
+
+  // Stable sort: by posted date desc, then by invoice number, then job id.
+  rows.sort((a, b) => {
+    if (a.postedDate !== b.postedDate) return a.postedDate < b.postedDate ? 1 : -1;
+    if (a.invoiceNumber !== b.invoiceNumber) return a.invoiceNumber < b.invoiceNumber ? -1 : 1;
+    return a.jobId.localeCompare(b.jobId);
+  });
+
+  return rows;
+}
