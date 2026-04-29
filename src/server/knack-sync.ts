@@ -35,7 +35,7 @@ const KPI_METRIC_MAP = {
   runsCompleted: 'Runs Completed',
   jobsCompleted: 'Jobs Completed',
   runsInvoiced: 'Runs Invoiced',
-  avgDaysSentToInvoiced: 'Avg Days Sent→Invoiced',
+  avgDaysShippedToInvoiced: 'Avg Days Shipped→Invoiced',
   avgDaysOrderToComplete: 'Avg Days Order→Complete',
   onTimeDeliveryPct: 'On-Time Delivery %',
   weeklyRevenue: 'Weekly Revenue',
@@ -47,9 +47,9 @@ type KPIKey = keyof typeof KPI_METRIC_MAP;
  * Sync Knack data into the EOS scorecard for the last N weeks.
  * Creates metrics if they don't exist, then upserts weekly entries.
  *
- * A "completion" is when field_2292 (dateSentToInvoicing) on a run is
- * populated. Parent jobs count as completed when every run for that
- * parent job has field_2292 set.
+ * "Completion" = field_972 (shippedDate). Parent jobs count as completed
+ * when every part run has shippedDate set; the job's week = MAX shippedDate.
+ * Revenue and Runs Invoiced come from the invoice side (object_10).
  */
 export async function syncKnackToScorecard(weekCount = 1): Promise<{
   ok: boolean;
@@ -68,8 +68,9 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
     const startDate = weeks[weeks.length - 1]; // earliest week
     const endDate = addDays(weeks[0], 7);       // end of current week
 
-    // 1. In parallel: completed runs (by field_2292) AND invoices posted in
-    //    the window (by field_121, status="Added Into Quickbooks and Sent").
+    // 1. In parallel: completed runs (by field_972 / shippedDate) AND
+    //    invoices posted in the window (by field_121, status="Added Into
+    //    Quickbooks and Sent").
     const t1 = Date.now();
     const [completedRuns, invoices] = await Promise.all([
       fetchCompletedRuns(config, startDate, endDate),
@@ -78,8 +79,8 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
     const t1Ms = Date.now() - t1;
 
     // 2. In parallel: every run for parent jobs touched by completed runs
-    //    (so we can check "all parts complete"), AND every run referenced
-    //    by an invoice (so we can compute days from sent→invoiced).
+    //    (so we can check "all parts shipped"), AND every run referenced
+    //    by an invoice (so we can compute days from shipped→invoiced).
     const parentJobs = [...new Set(completedRuns.map((r) => r.parentJob).filter(Boolean))];
     const invoicedRunIds = [...new Set(invoices.flatMap((i) => i.runIds))];
     const t2 = Date.now();
@@ -104,7 +105,7 @@ export async function syncKnackToScorecard(weekCount = 1): Promise<{
         runsCompleted: week.runsCompleted,
         jobsCompleted: week.jobsCompleted,
         runsInvoiced: inv?.runsInvoiced ?? 0,
-        avgDaysSentToInvoiced: inv?.avgDaysSentToInvoiced ?? null,
+        avgDaysShippedToInvoiced: inv?.avgDaysShippedToInvoiced ?? null,
         avgDaysOrderToComplete: week.avgDaysOrderToComplete,
         onTimeDeliveryPct: week.onTimeDeliveryPct,
         weeklyRevenue: inv?.weeklyRevenue ?? 0,
@@ -193,7 +194,7 @@ async function ensureMetrics(ownerId: string): Promise<Record<KPIKey, string>> {
     runsCompleted: { goal: '20', comparator: 'gte', unit: 'runs' },
     jobsCompleted: { goal: '10', comparator: 'gte', unit: 'jobs' },
     runsInvoiced: { goal: '20', comparator: 'gte', unit: 'runs' },
-    avgDaysSentToInvoiced: { goal: '5', comparator: 'lte', unit: 'days' },
+    avgDaysShippedToInvoiced: { goal: '5', comparator: 'lte', unit: 'days' },
     avgDaysOrderToComplete: { goal: '14', comparator: 'lte', unit: 'days' },
     onTimeDeliveryPct: { goal: '90', comparator: 'gte', unit: '%' },
     weeklyRevenue: { goal: '50000', comparator: 'gte', unit: '$' },
@@ -258,9 +259,9 @@ export async function getCompletedRunsForWeek(weekStart: string): Promise<Drilld
 
   return runs.map((r) => {
     let daysToComplete: number | null = null;
-    if (r.orderDate && r.dateSentToInvoicing) {
+    if (r.orderDate && r.shippedDate) {
       const a = new Date(r.orderDate + 'T00:00:00').getTime();
-      const b = new Date(r.dateSentToInvoicing + 'T00:00:00').getTime();
+      const b = new Date(r.shippedDate + 'T00:00:00').getTime();
       daysToComplete = Math.round((b - a) / (1000 * 60 * 60 * 24));
     }
     return {
@@ -271,12 +272,12 @@ export async function getCompletedRunsForWeek(weekStart: string): Promise<Drilld
       customer: r.customer,
       customerName: r.customerName,
       orderDate: r.orderDate,
-      completionDate: r.dateSentToInvoicing,
+      completionDate: r.shippedDate,
       dueDate: r.dueDate,
       daysToComplete,
       revenue: r.revenue,
       invoiced: r.invoiced,
-      onTime: r.dueDate && r.dateSentToInvoicing ? r.dateSentToInvoicing <= r.dueDate : null,
+      onTime: r.dueDate && r.shippedDate ? r.shippedDate <= r.dueDate : null,
     };
   });
 }

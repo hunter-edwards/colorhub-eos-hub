@@ -49,7 +49,21 @@ export type KnackRun = {
   invoiced: boolean;   // field_798
   orderDate: string | null;   // field_969 → ISO date (only set on reprints; mostly null)
   dueDate: string | null;     // field_497 → ISO date (orderDueDate)
-  dateSentToInvoicing: string | null; // field_2292 → ISO date
+  /**
+   * Canonical "run completed" date: the day the shipping team clicked
+   * the "shipped" button (field_972 / shippedButtonDateStamp). This is
+   * the source for runsCompleted, jobsCompleted, on-time delivery, and
+   * the order→complete duration. Stable historically; not subject to
+   * Knack rule re-fires (unlike field_2292).
+   */
+  shippedDate: string | null;
+  /**
+   * dateSentToInvoicing (field_2292). Used only for the
+   * Avg Days Sent→Invoiced metric. Frequently overwritten by rule
+   * re-fires (e.g. 04/21 + 04/28 bulk stamps), so DO NOT use as a
+   * completion signal.
+   */
+  dateSentToInvoicing: string | null;
   revenue: number;     // field_961
 };
 
@@ -132,6 +146,7 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
     invoiced: rec.field_798 === 'Yes',
     orderDate: parseKnackDate(rec.field_969 as string),
     dueDate: parseKnackDate(rec.field_497 as string),
+    shippedDate: parseKnackDate(rec.field_972 as string),
     dateSentToInvoicing: parseInvoicingDate(rec.field_2292 as string),
     revenue: parseMoney(rec.field_961 as string),
   };
@@ -140,55 +155,33 @@ function parseRunRecord(rec: Record<string, unknown>): KnackRun {
 /**
  * Fetch all completed runs within a date range.
  *
- * "Completed" = field_2292 (dateSentToInvoicing) has a valid date.
- * Knack's "is after" / "is before" filters on a date field naturally
- * exclude records where that field is blank, so we don't need an
- * explicit "is not blank" clause.
+ * "Completed" = field_972 (shippedButtonDateStamp) — the day the shipping
+ * team clicked the "shipped" button — falls in the window. This is a
+ * stable per-record event timestamp; unlike field_2292, it is not subject
+ * to Knack rule re-fires that bulk-overwrite values.
  *
- * To fully evaluate "Jobs Completed" (all runs across all parts have
- * field_2292 set), callers also need runs OUTSIDE the window — fetched
- * separately via fetchRunsForParentJobs().
+ * To fully evaluate "Jobs Completed" (all runs across all parts shipped),
+ * callers also need runs OUTSIDE the window — fetched separately via
+ * fetchRunsForParentJobs().
  *
  * Paginates automatically (Knack max 1000/page).
  */
-// The Knack rule's retroactive fire stamped ~21k records at this moment.
-// Fetching them all would return thousands of records we'd then discard in
-// JS. We split the window around this boundary so Knack never returns them.
-const BULK_STAMP_BOUNDARY = '04/21/2026 7:49am';
-const BULK_STAMP_DATE = '04/21/2026';
-
 export async function fetchCompletedRuns(
   config: KnackConfig,
-  startDate: string,  // ISO YYYY-MM-DD
-  endDate: string     // ISO YYYY-MM-DD
+  startDate: string,  // ISO YYYY-MM-DD inclusive
+  endDate: string     // ISO YYYY-MM-DD exclusive
 ): Promise<KnackRun[]> {
-  const start = toKnackDate(startDate);
-  const end = toKnackDate(endDate);
-
-  // Two queries bracketing the bulk-stamp moment:
-  //   1. real invoicings BEFORE 04/21/2026 (exclusive)
-  //   2. real invoicings AFTER 04/21/2026 7:49am
-  // Combined, these skip the 21k bulk-stamped records at the Knack level.
-  const [before, after] = await Promise.all([
-    paginate(
-      config,
-      JSON.stringify([
-        { field: 'field_2292', operator: 'is after', value: start },
-        { field: 'field_2292', operator: 'is before', value: BULK_STAMP_DATE },
-      ])
-    ),
-    paginate(
-      config,
-      JSON.stringify([
-        { field: 'field_2292', operator: 'is after', value: BULK_STAMP_BOUNDARY },
-        { field: 'field_2292', operator: 'is before', value: end },
-      ])
-    ),
+  // Knack date operators are exclusive on both sides. Pad the start by
+  // one day and post-filter in JS to keep boundary semantics clear.
+  const startMinus1 = addIsoDays(startDate, -1);
+  const filters = JSON.stringify([
+    { field: 'field_972', operator: 'is after', value: toKnackDate(startMinus1) },
+    { field: 'field_972', operator: 'is before', value: toKnackDate(endDate) },
   ]);
-
-  const all = [...before, ...after];
-  // Defense in depth: parser also discards bulk-stamp artifacts.
-  return all.filter((r) => r.dateSentToInvoicing !== null);
+  const all = await paginate(config, filters);
+  return all.filter(
+    (r) => r.shippedDate !== null && r.shippedDate >= startDate && r.shippedDate < endDate
+  );
 }
 
 /**
@@ -356,16 +349,14 @@ export type WeeklyKPIs = {
   weekStart: string;  // ISO date (Monday)
   runsCompleted: number;
   jobsCompleted: number;
-  parentJobsInvoiced: number;
   avgDaysOrderToComplete: number | null;
   onTimeDeliveryPct: number | null;
-  weeklyRevenue: number;
 };
 
 export type WeeklyInvoiceKPIs = {
   weekStart: string;
   runsInvoiced: number;            // unique runs across invoices posted this week
-  avgDaysSentToInvoiced: number | null; // avg(postedDate − run.dateSentToInvoicing)
+  avgDaysShippedToInvoiced: number | null; // avg(postedDate − run.shippedDate)
   weeklyRevenue: number;           // sum of invoice.amount (field_805) for invoices posted this week
 };
 
@@ -373,12 +364,13 @@ export type WeeklyInvoiceKPIs = {
  * Compute weekly invoice-side KPIs from invoice records (object_10) and
  * the run records they reference (object_1).
  *
- *   runsInvoiced          = unique run IDs across invoices posted in the week
- *   avgDaysSentToInvoiced = avg of (postedDate − run.dateSentToInvoicing)
- *                           for each unique run, using the EARLIEST
- *                           posted-date when a run is on multiple invoices.
- *                           Runs without a dateSentToInvoicing are skipped
- *                           in the average but still counted in runsInvoiced.
+ *   runsInvoiced              = unique run IDs across invoices posted in the week
+ *   avgDaysShippedToInvoiced  = avg of (postedDate − run.shippedDate)
+ *                               for each unique run, using the EARLIEST
+ *                               posted-date when a run is on multiple invoices.
+ *                               Runs without a shippedDate are skipped in the
+ *                               average but still counted in runsInvoiced.
+ *   weeklyRevenue             = sum of invoice.amount across invoices posted in week
  */
 export function computeInvoiceKPIs(
   invoices: KnackInvoice[],
@@ -409,15 +401,12 @@ export function computeInvoiceKPIs(
       runsInWeek.push(runId);
 
       const run = runById.get(runId);
-      if (!run?.dateSentToInvoicing) continue;
-      const sent = new Date(run.dateSentToInvoicing + 'T00:00:00Z').getTime();
+      if (!run?.shippedDate) continue;
+      const shipped = new Date(run.shippedDate + 'T00:00:00Z').getTime();
       const posted = new Date(postedDate + 'T00:00:00Z').getTime();
-      const days = (posted - sent) / (1000 * 60 * 60 * 24);
-      // A run cannot be invoiced before it's sent to invoicing. When this
-      // happens it means field_2292 (dateSentToInvoicing) was overwritten
-      // by a later rule re-fire (e.g. the 04/21 and 04/28 bulk-stamp
-      // events), so the original "sent" date is gone. Skip rather than
-      // pollute the average with negative days.
+      const days = (posted - shipped) / (1000 * 60 * 60 * 24);
+      // A run cannot be invoiced before it ships. If the data shows that,
+      // skip rather than poison the average with a negative.
       if (days < 0) continue;
       dayDiffs.push(days);
     }
@@ -439,20 +428,20 @@ export function computeInvoiceKPIs(
     return {
       weekStart,
       runsInvoiced: runsInWeek.length,
-      avgDaysSentToInvoiced: avg,
+      avgDaysShippedToInvoiced: avg,
       weeklyRevenue,
     };
   });
 }
 
 /**
- * Compute weekly KPIs using field_2292 (dateSentToInvoicing) as the
- * canonical "completion" signal. Runs are grouped into ISO weeks (Mon–Sun)
- * by their completion date.
+ * Compute weekly KPIs using field_972 (shippedDate) as the canonical
+ * "completion" signal. Runs are grouped into ISO weeks (Mon–Sun) by
+ * the day the shipped button was clicked.
  *
- * @param completedRuns runs that fell in the overall window (completed in it)
+ * @param completedRuns runs whose shippedDate falls in the overall window
  * @param allJobRuns    every run for the parent jobs touched by completedRuns.
- *                      Needed to verify that ALL runs across ALL parts are complete.
+ *                      Needed to verify that ALL runs across ALL parts shipped.
  * @param weekStarts    ISO Monday dates (one bucket per week)
  */
 export function computeWeeklyKPIs(
@@ -463,17 +452,15 @@ export function computeWeeklyKPIs(
   return weekStarts.map((weekStart) => {
     const weekEnd = addDays(weekStart, 7);
     const weekRuns = completedRuns.filter(
-      (r) => r.dateSentToInvoicing && r.dateSentToInvoicing >= weekStart && r.dateSentToInvoicing < weekEnd
+      (r) => r.shippedDate && r.shippedDate >= weekStart && r.shippedDate < weekEnd
     );
 
     return {
       weekStart,
       runsCompleted: weekRuns.length,
       jobsCompleted: countJobsCompleted(weekRuns, allJobRuns),
-      parentJobsInvoiced: countParentJobsInvoiced(weekRuns, allJobRuns),
       avgDaysOrderToComplete: avgDaysOrderToComplete(weekRuns),
       onTimeDeliveryPct: onTimeDeliveryPct(weekRuns),
-      weeklyRevenue: weekRuns.reduce((sum, r) => sum + r.revenue, 0),
     };
   });
 }
@@ -482,7 +469,7 @@ export function computeWeeklyKPIs(
  * Count parent jobs completed in the week.
  *
  * A parent job is "completed" when every run (across every part) has
- * field_2292 set. Its week = MAX(field_2292) across those runs.
+ * shippedDate set. Its week = MAX(shippedDate) across those runs.
  */
 function countJobsCompleted(weekRuns: KnackRun[], allJobRuns: KnackRun[]): number {
   const parentJobsThisWeek = new Set(
@@ -499,57 +486,18 @@ function countJobsCompleted(weekRuns: KnackRun[], allJobRuns: KnackRun[]): numbe
       (r) => r.customer === customer && r.parentJob === parentJob
     );
 
-    // Every run must be completed
-    const allCompleted = runsForJob.length > 0 && runsForJob.every((r) => r.dateSentToInvoicing);
-    if (!allCompleted) continue;
+    const allShipped = runsForJob.length > 0 && runsForJob.every((r) => r.shippedDate);
+    if (!allShipped) continue;
 
-    // Parent job's completion week = week containing MAX(dateSentToInvoicing)
+    // Parent job's completion week = week containing MAX(shippedDate)
     const maxDate = runsForJob.reduce(
-      (max, r) => (r.dateSentToInvoicing && r.dateSentToInvoicing > max ? r.dateSentToInvoicing : max),
+      (max, r) => (r.shippedDate && r.shippedDate > max ? r.shippedDate : max),
       ''
     );
     if (!maxDate) continue;
 
     if (weekRuns.some(
-      (r) => r.dateSentToInvoicing && getWeekStartForDate(r.dateSentToInvoicing) === getWeekStartForDate(maxDate)
-    )) {
-      count++;
-    }
-  }
-
-  return count;
-}
-
-/**
- * Financial KPI: parent jobs where ALL runs have field_798=Yes (invoiced flag).
- * Week = MAX(dateSentToInvoicing) across the job's runs.
- */
-function countParentJobsInvoiced(weekRuns: KnackRun[], allJobRuns: KnackRun[]): number {
-  const parentJobsThisWeek = new Set(
-    weekRuns
-      .filter((r) => r.parentJob)
-      .map((r) => `${r.customer}_${r.parentJob}`)
-  );
-
-  let count = 0;
-
-  for (const pjKey of parentJobsThisWeek) {
-    const [customer, parentJob] = pjKey.split('_');
-    const runsForJob = allJobRuns.filter(
-      (r) => r.customer === customer && r.parentJob === parentJob
-    );
-
-    const allInvoiced = runsForJob.length > 0 && runsForJob.every((r) => r.invoiced);
-    if (!allInvoiced) continue;
-
-    const maxDate = runsForJob.reduce(
-      (max, r) => (r.dateSentToInvoicing && r.dateSentToInvoicing > max ? r.dateSentToInvoicing : max),
-      ''
-    );
-    if (!maxDate) continue;
-
-    if (weekRuns.some(
-      (r) => r.dateSentToInvoicing && getWeekStartForDate(r.dateSentToInvoicing) === getWeekStartForDate(maxDate)
+      (r) => r.shippedDate && getWeekStartForDate(r.shippedDate) === getWeekStartForDate(maxDate)
     )) {
       count++;
     }
@@ -569,9 +517,9 @@ function getWeekStartForDate(isoDate: string): string {
 function avgDaysOrderToComplete(runs: KnackRun[]): number | null {
   const diffs: number[] = [];
   for (const r of runs) {
-    if (r.orderDate && r.dateSentToInvoicing) {
+    if (r.orderDate && r.shippedDate) {
       const order = new Date(r.orderDate + 'T00:00:00');
-      const complete = new Date(r.dateSentToInvoicing + 'T00:00:00');
+      const complete = new Date(r.shippedDate + 'T00:00:00');
       diffs.push((complete.getTime() - order.getTime()) / (1000 * 60 * 60 * 24));
     }
   }
@@ -580,9 +528,9 @@ function avgDaysOrderToComplete(runs: KnackRun[]): number | null {
 }
 
 function onTimeDeliveryPct(runs: KnackRun[]): number | null {
-  const withDue = runs.filter((r) => r.dueDate && r.dateSentToInvoicing);
+  const withDue = runs.filter((r) => r.dueDate && r.shippedDate);
   if (withDue.length === 0) return null;
-  const onTime = withDue.filter((r) => r.dateSentToInvoicing! <= r.dueDate!).length;
+  const onTime = withDue.filter((r) => r.shippedDate! <= r.dueDate!).length;
   return Math.round((onTime / withDue.length) * 1000) / 10;
 }
 
