@@ -252,3 +252,87 @@ export const processes = pgTable('processes', {
   orderIdx: integer('order_idx').notNull().default(0),
   updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 });
+
+// ----- FLOOR -----
+export const stationKind = pgEnum('station_kind',
+  ['printer', 'cad', 'rotary', 'gluer', 'handwork', 'shipping']);
+
+export const stations = pgTable('stations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  name: text('name').notNull(),
+  kind: stationKind('kind').notNull(),
+  displayOrder: integer('display_order').notNull().default(0),
+  groupLabel: text('group_label'),
+  knackMachineCenterId: text('knack_machine_center_id'),
+  archivedAt: timestamp('archived_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const stationDefaultOperators = pgTable('station_default_operators', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  stationId: uuid('station_id').references(() => stations.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  priority: integer('priority').notNull().default(0),
+}, (t) => [unique().on(t.stationId, t.userId)]);
+
+export const shiftSessions = pgTable('shift_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  date: date('date').notNull(),
+  shiftNumber: integer('shift_number').notNull(),
+  openedBy: uuid('opened_by').references(() => users.id),
+  openedAt: timestamp('opened_at').defaultNow().notNull(),
+  closedAt: timestamp('closed_at'),
+  handoffNotes: text('handoff_notes'),
+}, (t) => [unique().on(t.teamId, t.date, t.shiftNumber)]);
+
+export const shiftAssignments = pgTable('shift_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  shiftSessionId: uuid('shift_session_id').references(() => shiftSessions.id, { onDelete: 'cascade' }).notNull(),
+  stationId: uuid('station_id').references(() => stations.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+}, (t) => [unique().on(t.shiftSessionId, t.stationId, t.userId)]);
+
+export const shiftEventKind = pgEnum('shift_event_kind', [
+  'job_started', 'job_paused', 'job_resumed', 'job_completed',
+  'pm_performed', 'issue_noted', 'waste_logged', 'task_completed',
+  'operator_moved', 'note',
+]);
+
+export const shiftEvents = pgTable('shift_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  shiftSessionId: uuid('shift_session_id').references(() => shiftSessions.id, { onDelete: 'cascade' }).notNull(),
+  stationId: uuid('station_id').references(() => stations.id, { onDelete: 'set null' }),
+  kind: shiftEventKind('kind').notNull(),
+  payload: jsonb('payload').notNull(),
+  occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+  recordedBy: uuid('recorded_by').references(() => users.id),
+  relatedKnackJobId: text('related_knack_job_id'),
+});
+
+export const pmSchedules = pgTable('pm_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  stationId: uuid('station_id').references(() => stations.id, { onDelete: 'cascade' }).notNull(),
+  label: text('label').notNull(),
+  cadenceDays: integer('cadence_days').notNull(),
+  lastDoneAt: date('last_done_at'),
+});
+
+export const taskPoolStatus = pgEnum('task_pool_status', ['open', 'in_progress', 'done', 'archived']);
+export const taskPoolSource = pgEnum('task_pool_source', ['hub', 'eos_todo']);
+
+export const taskPool = pgTable('task_pool', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id').references(() => teams.id),
+  title: text('title').notNull(),
+  estMinutes: integer('est_minutes'),
+  suggestedStationId: uuid('suggested_station_id').references(() => stations.id, { onDelete: 'set null' }),
+  status: taskPoolStatus('status').notNull().default('open'),
+  source: taskPoolSource('source').notNull().default('hub'),
+  sourceTodoId: uuid('source_todo_id').references(() => todos.id, { onDelete: 'set null' }),
+  assignedShiftSessionId: uuid('assigned_shift_session_id').references(() => shiftSessions.id, { onDelete: 'set null' }),
+  assignedUserId: uuid('assigned_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+});
