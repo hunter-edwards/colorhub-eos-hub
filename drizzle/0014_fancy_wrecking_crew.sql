@@ -1,0 +1,2 @@
+ALTER TABLE "shift_sessions" ALTER COLUMN "team_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "stations" ADD CONSTRAINT "stations_team_id_knack_machine_center_id_unique" UNIQUE("team_id","knack_machine_center_id");

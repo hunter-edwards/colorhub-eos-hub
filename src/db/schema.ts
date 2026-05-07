@@ -267,7 +267,7 @@ export const stations = pgTable('stations', {
   knackMachineCenterId: text('knack_machine_center_id'),
   archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [unique().on(t.teamId, t.knackMachineCenterId)]);
 
 export const stationDefaultOperators = pgTable('station_default_operators', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -278,7 +278,7 @@ export const stationDefaultOperators = pgTable('station_default_operators', {
 
 export const shiftSessions = pgTable('shift_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  teamId: uuid('team_id').references(() => teams.id),
+  teamId: uuid('team_id').references(() => teams.id).notNull(),
   date: date('date').notNull(),
   shiftNumber: integer('shift_number').notNull(),
   openedBy: uuid('opened_by').references(() => users.id),
