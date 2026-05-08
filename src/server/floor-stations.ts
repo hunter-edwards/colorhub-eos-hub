@@ -2,7 +2,7 @@
 
 import { db } from '@/db';
 import { stations, stationDefaultOperators } from '@/db/schema';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
@@ -93,6 +93,29 @@ export async function archiveStation(id: string): Promise<void> {
   await db.update(stations).set({ archivedAt: new Date() }).where(eq(stations.id, id));
   revalidatePath('/floor');
   revalidatePath('/floor/setup');
+}
+
+export async function listDefaultOperators(
+  stationIds: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (stationIds.length === 0) return out;
+  const rows = (await db
+    .select({
+      stationId: stationDefaultOperators.stationId,
+      userId: stationDefaultOperators.userId,
+    })
+    .from(stationDefaultOperators)
+    .where(inArray(stationDefaultOperators.stationId, stationIds))) as Array<{
+    stationId: string;
+    userId: string;
+  }>;
+  for (const id of stationIds) out.set(id, []);
+  for (const r of rows) {
+    const list = out.get(r.stationId);
+    if (list) list.push(r.userId);
+  }
+  return out;
 }
 
 export async function setDefaultOperators(

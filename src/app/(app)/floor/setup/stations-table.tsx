@@ -11,13 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   archiveStationAction,
   createStationAction,
   reorderStationAction,
   seedDefaultStationsAction,
+  setDefaultOperatorsAction,
   updateStationAction,
 } from './stations-tab-actions';
 
@@ -39,16 +42,120 @@ export type StationRow = {
   displayOrder: number;
   groupLabel: string | null;
   archivedAt: Date | null;
+  defaultOperatorIds: string[];
 };
+
+export type Member = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
+function memberLabel(m: Member): string {
+  return m.name ?? m.email;
+}
+
+function DefaultOperatorsPicker({
+  station,
+  members,
+}: {
+  station: StationRow;
+  members: Member[];
+}) {
+  const [selected, setSelected] = useState<string[]>(station.defaultOperatorIds);
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const initialRef = station.defaultOperatorIds;
+
+  const toggle = (id: string, checked: boolean) => {
+    setSelected((cur) => (checked ? [...cur, id] : cur.filter((x) => x !== id)));
+  };
+
+  const persistIfChanged = () => {
+    const initial = [...initialRef].sort().join(',');
+    const next = [...selected].sort().join(',');
+    if (initial === next) return;
+    startTransition(async () => {
+      try {
+        await setDefaultOperatorsAction(station.id, selected);
+        toast.success('Default operators updated');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to save');
+      }
+    });
+  };
+
+  const summary =
+    selected.length === 0
+      ? 'None'
+      : selected.length === 1
+        ? memberLabel(members.find((m) => m.id === selected[0]) ?? { id: '', name: null, email: '?' })
+        : `${selected.length} operators`;
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) persistIfChanged();
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={isPending}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>{summary}</span>
+          </Button>
+        }
+      />
+      <PopoverContent align="start" className="w-64 p-2">
+        <div className="mb-2 px-1 text-xs font-medium text-muted-foreground">
+          Default operators
+        </div>
+        <div className="max-h-60 space-y-1 overflow-y-auto">
+          {members.length === 0 ? (
+            <div className="px-1 py-2 text-xs text-muted-foreground">
+              No team members.
+            </div>
+          ) : (
+            members.map((m) => {
+              const checked = selected.includes(m.id);
+              return (
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(v) => toggle(m.id, !!v)}
+                  />
+                  <span className="text-sm">{memberLabel(m)}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function StationEditableRow({
   station,
   prevId,
   nextId,
+  members,
 }: {
   station: StationRow;
   prevId: string | null;
   nextId: string | null;
+  members: Member[];
 }) {
   const [name, setName] = useState(station.name);
   const [groupLabel, setGroupLabel] = useState(station.groupLabel ?? '');
@@ -178,6 +285,9 @@ function StationEditableRow({
           {archived ? 'Archived' : 'Active'}
         </span>
       </TableCell>
+      <TableCell>
+        {!archived && <DefaultOperatorsPicker station={station} members={members} />}
+      </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-2">
           {dirty && !archived && (
@@ -303,7 +413,13 @@ function SeedDefaultsButton() {
   );
 }
 
-export function StationsTable({ stations }: { stations: StationRow[] }) {
+export function StationsTable({
+  stations,
+  members,
+}: {
+  stations: StationRow[];
+  members: Member[];
+}) {
   if (stations.length === 0) {
     return (
       <div className="space-y-4">
@@ -333,6 +449,7 @@ export function StationsTable({ stations }: { stations: StationRow[] }) {
               <TableHead>Group</TableHead>
               <TableHead className="text-center">Order</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Operators</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -343,6 +460,7 @@ export function StationsTable({ stations }: { stations: StationRow[] }) {
                 station={s}
                 prevId={s.archivedAt == null ? prevByActiveId.get(s.id) ?? null : null}
                 nextId={s.archivedAt == null ? nextByActiveId.get(s.id) ?? null : null}
+                members={members}
               />
             ))}
           </TableBody>

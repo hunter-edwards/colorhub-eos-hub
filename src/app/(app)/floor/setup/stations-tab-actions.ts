@@ -43,6 +43,12 @@ export async function reorderStationAction(id: string, displayOrder: number) {
   revalidatePath('/floor');
 }
 
+export async function setDefaultOperatorsAction(stationId: string, userIds: string[]) {
+  await floorStations.setDefaultOperators(stationId, userIds);
+  revalidatePath('/floor/setup');
+  revalidatePath('/floor');
+}
+
 export async function seedDefaultStationsAction() {
   const teamId = await getCurrentTeamId();
   await floorStations.seedDefaultStations(teamId);
