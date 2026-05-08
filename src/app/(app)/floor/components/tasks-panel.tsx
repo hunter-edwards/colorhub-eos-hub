@@ -1,14 +1,25 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { Plus } from 'lucide-react';
 import type { TaskRow } from '@/server/floor-tasks';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   archiveTaskFromBoardAction,
   completeTaskAction,
   createTaskFromBoardAction,
   progressTaskAction,
 } from '../floor-tasks-actions';
+import {
+  importTodosAsTasksAction,
+  listOpenTodosForImport,
+} from '@/server/floor-tasks-import';
 
 type Station = { id: string; name: string };
 
@@ -223,8 +234,124 @@ function AddTaskForm({
   );
 }
 
+type TodoOption = { id: string; title: string; dueDate: string | null };
+
+function ImportTodosDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [todos, setTodos] = useState<TodoOption[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!open) return;
+    setTodos(null);
+    setSelected(new Set());
+    setError(null);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listOpenTodosForImport();
+        if (!cancelled) setTodos(rows);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const toggle = (id: string) => {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const onImport = () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    startTransition(async () => {
+      try {
+        await importTodosAsTasksAction(ids);
+        onOpenChange(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to import');
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Import EOS to-dos</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[400px] overflow-auto flex flex-col gap-1">
+          {error && <div className="text-sm text-red-500">{error}</div>}
+          {todos === null && !error && (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          )}
+          {todos !== null && todos.length === 0 && (
+            <div className="text-sm text-muted-foreground">No open to-dos.</div>
+          )}
+          {todos?.map((t) => {
+            const checked = selected.has(t.id);
+            return (
+              <label
+                key={t.id}
+                className="flex items-center gap-2 rounded-md p-2 hover:bg-muted/50 cursor-pointer"
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => toggle(t.id)}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{t.title}</div>
+                  {t.dueDate && (
+                    <div className="text-xs text-muted-foreground">
+                      Due {t.dueDate}
+                    </div>
+                  )}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+            className="text-sm px-3 py-1.5 rounded-md hover:bg-muted disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onImport}
+            disabled={selected.size === 0 || isPending}
+            className="text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50"
+          >
+            Import {selected.size} selected
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TasksPanel({ tasks, stations, shiftSessionId }: Props) {
   const [adding, setAdding] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const stationNameById = new Map(stations.map((s) => [s.id, s.name] as const));
 
   const openCount = tasks.filter(
@@ -241,14 +368,14 @@ export function TasksPanel({ tasks, stations, shiftSessionId }: Props) {
 
   return (
     <div className="rounded-md border border-white/10 p-4 flex flex-col min-h-0">
+      <ImportTodosDialog open={importOpen} onOpenChange={setImportOpen} />
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="floor-title">Tasks · {openCount} open</div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            disabled
-            title="Coming in Task 29"
-            className="floor-chip px-2 py-1 rounded bg-white/5 text-white/40 ring-1 ring-white/10 cursor-not-allowed"
+            onClick={() => setImportOpen(true)}
+            className="floor-chip px-2 py-1 rounded bg-white/5 text-white/70 ring-1 ring-white/10 hover:bg-white/10"
           >
             Import EOS to-do
           </button>
