@@ -116,8 +116,14 @@ export function summarizeEvent(event: FloorEvent): string {
     }
     case 'operator_moved': {
       const userName = p.userName;
-      const stationName = p.stationName;
-      if (userName && stationName) return `Moved ${userName} → ${stationName}`;
+      const fromStationName = p.fromStationName;
+      const toStationName = p.toStationName;
+      if (userName && toStationName) {
+        if (fromStationName) {
+          return `Moved ${userName} — ${fromStationName} → ${toStationName}`;
+        }
+        return `Moved ${userName} → ${toStationName}`;
+      }
       return 'Moved operator';
     }
     case 'note': {

@@ -83,4 +83,45 @@ describe('summarizeEvent', () => {
       }),
     ).toBe('Completed — 5,000 sheets');
   });
+  it('formats operator_moved with userName and toStationName (no from)', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {
+          userName: 'Alice',
+          fromStationName: null,
+          toStationName: 'Press 2',
+        },
+      }),
+    ).toBe('Moved Alice → Press 2');
+  });
+  it('formats operator_moved with from and to station names', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {
+          userName: 'Alice',
+          fromStationName: 'Press 1',
+          toStationName: 'Press 2',
+        },
+      }),
+    ).toBe('Moved Alice — Press 1 → Press 2');
+  });
+  it('falls back to "Moved operator" when name fields are missing', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {},
+      }),
+    ).toBe('Moved operator');
+  });
 });
