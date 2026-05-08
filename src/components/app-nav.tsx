@@ -79,7 +79,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           )}
           {section.items.map(({ href, label, icon: Icon }) => {
-            const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            const active = href === '/' ? pathname === '/' : (pathname === href || pathname.startsWith(href + '/'));
             return (
               <Link
                 key={href}

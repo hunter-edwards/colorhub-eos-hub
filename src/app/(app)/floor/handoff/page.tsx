@@ -79,6 +79,7 @@ export default async function FloorHandoffPage({
     session.openedAt as unknown as string,
   ).getTime();
   const fourHoursMs = 4 * 60 * 60 * 1000;
+  // eslint-disable-next-line react-hooks/purity -- this is an async server component, not a React render path
   const notesReadOnly = Date.now() - sessionStartedAt > fourHoursMs;
 
   return (

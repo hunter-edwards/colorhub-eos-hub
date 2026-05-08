@@ -13,7 +13,7 @@ export type FloorEvent = {
     | 'operator_moved'
     | 'note';
   occurredAt: Date;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 };
 
 export type StationLiveStatus = 'running' | 'setup' | 'down' | 'idle';

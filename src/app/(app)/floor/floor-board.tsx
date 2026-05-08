@@ -125,6 +125,7 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
     if (!initial.previousSessionId || !initial.previousHandoffNotes) return;
     try {
       const stored = window.localStorage.getItem('floor-handoff-dismissed');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bridging from window.localStorage (external system) to React state on mount
       if (stored === initial.previousSessionId) setHandoffDismissed(true);
     } catch {
       // localStorage unavailable; treat as not dismissed.
@@ -153,6 +154,7 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   useEffect(() => {
     if (!snapshot) return;
     if (snapshot.newEvents.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing poll snapshot (external system) into React state
       setEvents((prev) => {
         const ids = new Set(prev.map((e) => e.id));
         const merged = [

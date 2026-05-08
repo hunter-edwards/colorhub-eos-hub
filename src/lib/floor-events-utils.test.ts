@@ -3,6 +3,7 @@ import {
   deriveStationStatus,
   groupEventsByStation,
   summarizeEvent,
+  type FloorEvent,
 } from './floor-events-utils';
 
 describe('groupEventsByStation', () => {
@@ -23,49 +24,63 @@ describe('deriveStationStatus', () => {
     expect(deriveStationStatus([], 's1')).toBe('idle');
   });
   it('running after job_started', () => {
-    const evs = [
+    const evs: FloorEvent[] = [
       { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date(), payload: {} },
     ];
-    expect(deriveStationStatus(evs as any, 's1')).toBe('running');
+    expect(deriveStationStatus(evs, 's1')).toBe('running');
   });
   it('paused after job_paused', () => {
-    const evs = [
+    const evs: FloorEvent[] = [
       { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
       { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
     ];
-    expect(deriveStationStatus(evs as any, 's1')).toBe('setup');
+    expect(deriveStationStatus(evs, 's1')).toBe('setup');
   });
   it('running after pause then resume', () => {
-    const evs = [
+    const evs: FloorEvent[] = [
       { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
       { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
       { id: '3', stationId: 's1', kind: 'job_resumed', occurredAt: new Date('2026-05-07T09:30Z'), payload: {} },
     ];
-    expect(deriveStationStatus(evs as any, 's1')).toBe('running');
+    expect(deriveStationStatus(evs, 's1')).toBe('running');
   });
   it('idle after job_completed', () => {
-    const evs = [
+    const evs: FloorEvent[] = [
       { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
       { id: '2', stationId: 's1', kind: 'job_completed', occurredAt: new Date('2026-05-07T11:00Z'), payload: {} },
     ];
-    expect(deriveStationStatus(evs as any, 's1')).toBe('idle');
+    expect(deriveStationStatus(evs, 's1')).toBe('idle');
   });
   it('only considers events for the given stationId', () => {
-    const evs = [
+    const evs: FloorEvent[] = [
       { id: '1', stationId: 's2', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
       { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
     ];
-    expect(deriveStationStatus(evs as any, 's2')).toBe('running');
+    expect(deriveStationStatus(evs, 's2')).toBe('running');
   });
 });
 
 describe('summarizeEvent', () => {
   it('formats a job_paused with reason', () => {
-    expect(summarizeEvent({ kind: 'job_paused', payload: { reason: 'material', note: 'waiting on stock' } } as any))
-      .toBe('Paused — material (waiting on stock)');
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's1',
+        kind: 'job_paused',
+        occurredAt: new Date(),
+        payload: { reason: 'material', note: 'waiting on stock' },
+      }),
+    ).toBe('Paused — material (waiting on stock)');
   });
   it('formats job_completed with sheets', () => {
-    expect(summarizeEvent({ kind: 'job_completed', payload: { sheets: 5000 } } as any))
-      .toBe('Completed — 5,000 sheets');
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's1',
+        kind: 'job_completed',
+        occurredAt: new Date(),
+        payload: { sheets: 5000 },
+      }),
+    ).toBe('Completed — 5,000 sheets');
   });
 });

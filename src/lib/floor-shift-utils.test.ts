@@ -4,11 +4,11 @@ import { resolveShift, isInHuddleWindow } from './floor-shift-utils';
 describe('resolveShift', () => {
   it('returns shift 1 for 07:00–15:00', () => {
     expect(resolveShift(new Date('2026-05-07T07:00:00-05:00'))).toMatchObject({ shiftNumber: 1, date: '2026-05-07' });
-    expect(resolveShift(new Date('2026-05-07T14:59:00-05:00')).shiftNumber).toBe(1);
+    expect(resolveShift(new Date('2026-05-07T14:59:00-05:00'))!.shiftNumber).toBe(1);
   });
   it('returns shift 2 for 15:00–23:00', () => {
-    expect(resolveShift(new Date('2026-05-07T15:00:00-05:00')).shiftNumber).toBe(2);
-    expect(resolveShift(new Date('2026-05-07T22:59:00-05:00')).shiftNumber).toBe(2);
+    expect(resolveShift(new Date('2026-05-07T15:00:00-05:00'))!.shiftNumber).toBe(2);
+    expect(resolveShift(new Date('2026-05-07T22:59:00-05:00'))!.shiftNumber).toBe(2);
   });
   it('returns null off-hours', () => {
     expect(resolveShift(new Date('2026-05-07T05:00:00-05:00'))).toBeNull();

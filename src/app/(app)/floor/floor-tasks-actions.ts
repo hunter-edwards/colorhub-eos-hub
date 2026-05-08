@@ -28,6 +28,7 @@ export async function progressTaskAction(
   taskId: string,
   _shiftSessionId: string | null,
 ) {
+  void _shiftSessionId; // accepted for API symmetry with completeTaskAction; not currently used
   await floorTasks.markTask(taskId, 'in_progress', {});
   revalidatePath('/floor');
 }

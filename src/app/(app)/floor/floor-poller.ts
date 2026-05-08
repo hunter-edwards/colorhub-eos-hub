@@ -22,7 +22,6 @@ export function useFloorPoll(
 
   useEffect(() => {
     let cancelled = false;
-    let timer: number | undefined;
 
     async function tick() {
       if (
@@ -55,7 +54,7 @@ export function useFloorPoll(
     }
 
     void tick();
-    timer = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       void tick();
     }, intervalMs) as unknown as number;
 

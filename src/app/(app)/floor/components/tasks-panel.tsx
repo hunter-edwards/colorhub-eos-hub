@@ -250,6 +250,7 @@ function ImportTodosDialog({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting modal state on open is the intended pattern here
     setTodos(null);
     setSelected(new Set());
     setError(null);

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { EventsFeed } from './events-feed';
+import type { ShiftEvent } from '@/server/floor-events';
 
 describe('EventsFeed', () => {
   const stations = [{ id: 's1', name: 'Press 1' }];
@@ -27,7 +28,7 @@ describe('EventsFeed', () => {
         relatedKnackJobId: null,
       },
     ];
-    render(<EventsFeed events={events as any} stations={stations} />);
+    render(<EventsFeed events={events as unknown as ShiftEvent[]} stations={stations} />);
     const rows = screen.getAllByText(/Started/i);
     expect(rows[0].textContent).toMatch(/J-2/);
     expect(rows[1].textContent).toMatch(/J-1/);
