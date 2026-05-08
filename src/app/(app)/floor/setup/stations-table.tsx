@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDown, ArrowUp, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Users, Wrench, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -23,6 +23,11 @@ import {
   setDefaultOperatorsAction,
   updateStationAction,
 } from './stations-tab-actions';
+import {
+  createPmScheduleAction,
+  updatePmScheduleAction,
+  deletePmScheduleAction,
+} from './pm-actions';
 
 type StationKind = 'printer' | 'cad' | 'rotary' | 'gluer' | 'handwork' | 'shipping';
 
@@ -35,6 +40,14 @@ const STATION_KINDS: StationKind[] = [
   'shipping',
 ];
 
+export type PmScheduleRow = {
+  id: string;
+  stationId: string;
+  label: string;
+  cadenceDays: number;
+  lastDoneAt: string | null;
+};
+
 export type StationRow = {
   id: string;
   name: string;
@@ -43,6 +56,7 @@ export type StationRow = {
   groupLabel: string | null;
   archivedAt: Date | null;
   defaultOperatorIds: string[];
+  pmSchedules: PmScheduleRow[];
 };
 
 export type Member = {
@@ -140,6 +154,264 @@ function DefaultOperatorsPicker({
               );
             })
           )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function PmScheduleItem({
+  schedule,
+}: {
+  schedule: PmScheduleRow;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(schedule.label);
+  const [cadenceDays, setCadenceDays] = useState(String(schedule.cadenceDays));
+  const [lastDoneAt, setLastDoneAt] = useState(schedule.lastDoneAt ?? '');
+  const [isPending, startTransition] = useTransition();
+
+  const reset = () => {
+    setLabel(schedule.label);
+    setCadenceDays(String(schedule.cadenceDays));
+    setLastDoneAt(schedule.lastDoneAt ?? '');
+    setEditing(false);
+  };
+
+  const save = () => {
+    const cadence = Number(cadenceDays);
+    if (!label.trim()) {
+      toast.error('Label required');
+      return;
+    }
+    if (!Number.isFinite(cadence) || cadence <= 0) {
+      toast.error('Cadence must be a positive number');
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await updatePmScheduleAction(schedule.id, {
+          label: label.trim(),
+          cadenceDays: cadence,
+          lastDoneAt: lastDoneAt === '' ? null : lastDoneAt,
+        });
+        toast.success('PM updated');
+        setEditing(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to update');
+      }
+    });
+  };
+
+  const onDelete = () => {
+    if (!confirm(`Delete PM schedule "${schedule.label}"?`)) return;
+    startTransition(async () => {
+      try {
+        await deletePmScheduleAction(schedule.id);
+        toast.success('PM deleted');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to delete');
+      }
+    });
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-sm">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{schedule.label}</div>
+          <div className="text-xs text-muted-foreground">
+            Every {schedule.cadenceDays}d
+            {schedule.lastDoneAt ? ` · Last ${schedule.lastDoneAt}` : ' · Never done'}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => setEditing(true)}
+            disabled={isPending}
+          >
+            Edit
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0 text-destructive"
+            onClick={onDelete}
+            disabled={isPending}
+            aria-label="Delete PM"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border p-2">
+      <Input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="Label"
+        className="h-8"
+        disabled={isPending}
+      />
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          min={1}
+          value={cadenceDays}
+          onChange={(e) => setCadenceDays(e.target.value)}
+          placeholder="Days"
+          className="h-8 w-24"
+          disabled={isPending}
+        />
+        <Input
+          type="date"
+          value={lastDoneAt}
+          onChange={(e) => setLastDoneAt(e.target.value)}
+          className="h-8 flex-1"
+          disabled={isPending}
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs"
+          onClick={reset}
+          disabled={isPending}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={save}
+          disabled={isPending}
+        >
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AddPmScheduleForm({ stationId }: { stationId: string }) {
+  const [label, setLabel] = useState('');
+  const [cadenceDays, setCadenceDays] = useState('');
+  const [lastDoneAt, setLastDoneAt] = useState('');
+  const [isPending, startTransition] = useTransition();
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cadence = Number(cadenceDays);
+    if (!label.trim()) {
+      toast.error('Label required');
+      return;
+    }
+    if (!Number.isFinite(cadence) || cadence <= 0) {
+      toast.error('Cadence must be a positive number');
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await createPmScheduleAction({
+          stationId,
+          label: label.trim(),
+          cadenceDays: cadence,
+          lastDoneAt: lastDoneAt === '' ? null : lastDoneAt,
+        });
+        toast.success('PM added');
+        setLabel('');
+        setCadenceDays('');
+        setLastDoneAt('');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to add');
+      }
+    });
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-2 rounded-md border border-dashed p-2">
+      <div className="text-xs font-medium text-muted-foreground">Add PM</div>
+      <Input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="Label (required)"
+        className="h-8"
+        disabled={isPending}
+      />
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          min={1}
+          value={cadenceDays}
+          onChange={(e) => setCadenceDays(e.target.value)}
+          placeholder="Days"
+          className="h-8 w-24"
+          disabled={isPending}
+        />
+        <Input
+          type="date"
+          value={lastDoneAt}
+          onChange={(e) => setLastDoneAt(e.target.value)}
+          className="h-8 flex-1"
+          disabled={isPending}
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" className="h-7 text-xs" disabled={isPending}>
+          Add
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function PmEditor({ station }: { station: StationRow }) {
+  const [open, setOpen] = useState(false);
+  const count = station.pmSchedules.length;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            <span>PM ({count})</span>
+          </Button>
+        }
+      />
+      <PopoverContent align="start" className="w-80 p-3">
+        <div className="mb-2 text-xs font-medium text-muted-foreground">
+          PM schedules
+        </div>
+        <div className="max-h-72 space-y-2 overflow-y-auto">
+          {station.pmSchedules.length === 0 ? (
+            <div className="rounded-md border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
+              No PM schedules yet.
+            </div>
+          ) : (
+            station.pmSchedules.map((s) => (
+              <PmScheduleItem key={s.id} schedule={s} />
+            ))
+          )}
+        </div>
+        <div className="mt-3">
+          <AddPmScheduleForm stationId={station.id} />
         </div>
       </PopoverContent>
     </Popover>
@@ -287,6 +559,9 @@ function StationEditableRow({
       </TableCell>
       <TableCell>
         {!archived && <DefaultOperatorsPicker station={station} members={members} />}
+      </TableCell>
+      <TableCell>
+        {!archived && <PmEditor station={station} />}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-2">
@@ -450,6 +725,7 @@ export function StationsTable({
               <TableHead className="text-center">Order</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Operators</TableHead>
+              <TableHead>PM</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
