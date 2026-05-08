@@ -128,3 +128,19 @@
     @apply font-sans;
   }
 }
+
+[data-floor-tv] {
+  color-scheme: dark;
+  --floor-fg: oklch(0.98 0 0);
+  --floor-bg: oklch(0.16 0 0);
+  --floor-card: oklch(0.21 0 0);
+  --floor-muted: oklch(0.65 0 0);
+
+  background: var(--floor-bg);
+  color: var(--floor-fg);
+}
+[data-floor-tv] .floor-display { font-size: clamp(48px, 5vw, 80px); font-weight: 700; line-height: 1; }
+[data-floor-tv] .floor-title   { font-size: clamp(28px, 2.4vw, 40px); font-weight: 600; }
+[data-floor-tv] .floor-body    { font-size: clamp(18px, 1.4vw, 24px); }
+[data-floor-tv] .floor-chip    { font-size: clamp(16px, 1.2vw, 20px); }
+[data-floor-tv] .floor-header  { font-size: clamp(20px, 1.5vw, 28px); }
