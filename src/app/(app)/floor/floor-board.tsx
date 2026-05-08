@@ -16,6 +16,7 @@ import type { FloorStationView } from '@/lib/floor-types';
 import { TVHeader } from './components/tv-header';
 import { StationsGrid } from './components/stations-grid';
 import { PeopleBench } from './components/people-bench';
+import { TasksPanel } from './components/tasks-panel';
 import { assignOperatorAction } from './floor-board-actions';
 
 type PmTileRow = {
@@ -181,7 +182,11 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
             defaultsByStation={initial.defaultOperatorsByStation}
             stations={initial.stations}
           />
-          <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Tasks pool Task 28 ]</div>
+          <TasksPanel
+            tasks={initial.tasks}
+            stations={initial.stations}
+            shiftSessionId={initial.session?.id ?? null}
+          />
           <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Events feed Task 30 ]</div>
         </div>
       </DndContext>
