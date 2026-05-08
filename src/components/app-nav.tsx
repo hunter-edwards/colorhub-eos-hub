@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Target, CheckSquare, AlertCircle,
   LineChart, Video, History, Settings, LogOut, Moon, Sun, CalendarClock,
   Compass, Heart, Users, UserCheck, FileText, Menu,
+  Activity, ClipboardList, Wrench,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { signOut } from '@/app/login/actions';
@@ -46,6 +47,15 @@ const sections = [
     ],
   },
   {
+    label: 'Floor',
+    items: [
+      { href: '/floor', label: 'Live Huddle', icon: Activity },
+      { href: '/floor/handoff', label: 'Handoff', icon: ClipboardList },
+      { href: '/floor/history', label: 'History', icon: History },
+      { href: '/floor/setup', label: 'Setup', icon: Wrench },
+    ],
+  },
+  {
     label: 'Meetings',
     items: [
       { href: '/meeting/upcoming', label: 'Upcoming', icon: CalendarClock },
@@ -69,7 +79,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           )}
           {section.items.map(({ href, label, icon: Icon }) => {
-            const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            const active = href === '/' ? pathname === '/' : (pathname === href || pathname.startsWith(href + '/'));
             return (
               <Link
                 key={href}

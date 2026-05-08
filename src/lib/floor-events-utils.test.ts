@@ -1,0 +1,127 @@
+import { describe, it, expect } from 'vitest';
+import {
+  deriveStationStatus,
+  groupEventsByStation,
+  summarizeEvent,
+  type FloorEvent,
+} from './floor-events-utils';
+
+describe('groupEventsByStation', () => {
+  it('groups by stationId, preserving chrono order', () => {
+    const evs = [
+      { id: '1', stationId: 'a', kind: 'job_started' as const, occurredAt: new Date('2026-05-07T07:05Z'), payload: {} },
+      { id: '2', stationId: 'b', kind: 'job_started' as const, occurredAt: new Date('2026-05-07T07:10Z'), payload: {} },
+      { id: '3', stationId: 'a', kind: 'job_completed' as const, occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
+    ];
+    const grouped = groupEventsByStation(evs);
+    expect(grouped.get('a')).toHaveLength(2);
+    expect(grouped.get('b')).toHaveLength(1);
+  });
+});
+
+describe('deriveStationStatus', () => {
+  it('idle when no events', () => {
+    expect(deriveStationStatus([], 's1')).toBe('idle');
+  });
+  it('running after job_started', () => {
+    const evs: FloorEvent[] = [
+      { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date(), payload: {} },
+    ];
+    expect(deriveStationStatus(evs, 's1')).toBe('running');
+  });
+  it('paused after job_paused', () => {
+    const evs: FloorEvent[] = [
+      { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
+      { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
+    ];
+    expect(deriveStationStatus(evs, 's1')).toBe('setup');
+  });
+  it('running after pause then resume', () => {
+    const evs: FloorEvent[] = [
+      { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
+      { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
+      { id: '3', stationId: 's1', kind: 'job_resumed', occurredAt: new Date('2026-05-07T09:30Z'), payload: {} },
+    ];
+    expect(deriveStationStatus(evs, 's1')).toBe('running');
+  });
+  it('idle after job_completed', () => {
+    const evs: FloorEvent[] = [
+      { id: '1', stationId: 's1', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
+      { id: '2', stationId: 's1', kind: 'job_completed', occurredAt: new Date('2026-05-07T11:00Z'), payload: {} },
+    ];
+    expect(deriveStationStatus(evs, 's1')).toBe('idle');
+  });
+  it('only considers events for the given stationId', () => {
+    const evs: FloorEvent[] = [
+      { id: '1', stationId: 's2', kind: 'job_started', occurredAt: new Date('2026-05-07T08:00Z'), payload: {} },
+      { id: '2', stationId: 's1', kind: 'job_paused', occurredAt: new Date('2026-05-07T09:00Z'), payload: {} },
+    ];
+    expect(deriveStationStatus(evs, 's2')).toBe('running');
+  });
+});
+
+describe('summarizeEvent', () => {
+  it('formats a job_paused with reason', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's1',
+        kind: 'job_paused',
+        occurredAt: new Date(),
+        payload: { reason: 'material', note: 'waiting on stock' },
+      }),
+    ).toBe('Paused — material (waiting on stock)');
+  });
+  it('formats job_completed with sheets', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's1',
+        kind: 'job_completed',
+        occurredAt: new Date(),
+        payload: { sheets: 5000 },
+      }),
+    ).toBe('Completed — 5,000 sheets');
+  });
+  it('formats operator_moved with userName and toStationName (no from)', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {
+          userName: 'Alice',
+          fromStationName: null,
+          toStationName: 'Press 2',
+        },
+      }),
+    ).toBe('Moved Alice → Press 2');
+  });
+  it('formats operator_moved with from and to station names', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {
+          userName: 'Alice',
+          fromStationName: 'Press 1',
+          toStationName: 'Press 2',
+        },
+      }),
+    ).toBe('Moved Alice — Press 1 → Press 2');
+  });
+  it('falls back to "Moved operator" when name fields are missing', () => {
+    expect(
+      summarizeEvent({
+        id: 'x',
+        stationId: 's2',
+        kind: 'operator_moved',
+        occurredAt: new Date(),
+        payload: {},
+      }),
+    ).toBe('Moved operator');
+  });
+});
