@@ -120,8 +120,21 @@ describe('getOrOpenCurrentShift', () => {
 
   it('creates a new session when none exists for (teamId, date, shiftNumber)', async () => {
     // First select: existing session lookup → empty.
-    // Second select: default operators → empty (no seeding rows).
-    state.selectResults = [[], []];
+    // Second select: re-select after onConflictDoNothing insert → row.
+    // Third select: default operators → empty (no seeding rows).
+    state.selectResults = [
+      [],
+      [
+        {
+          id: 'sess-new',
+          teamId: 'team-1',
+          date: '2026-05-07',
+          shiftNumber: 1,
+          openedBy: 'user-1',
+        },
+      ],
+      [],
+    ];
     const session = await getOrOpenCurrentShift(NOON_CT, {
       teamId: 'team-1',
       openedBy: 'user-1',
@@ -136,9 +149,19 @@ describe('getOrOpenCurrentShift', () => {
 
   it('seeds assignments from default operators when creating a new session', async () => {
     // First select: existing session → empty.
-    // Second select: default operators across all stations for the team.
+    // Second select: re-select after onConflictDoNothing insert → row.
+    // Third select: default operators across all stations for the team.
     state.selectResults = [
       [],
+      [
+        {
+          id: 'sess-new',
+          teamId: 'team-1',
+          date: '2026-05-07',
+          shiftNumber: 1,
+          openedBy: 'user-1',
+        },
+      ],
       [
         { stationId: 'st-1', userId: 'u1' },
         { stationId: 'st-1', userId: 'u2' },

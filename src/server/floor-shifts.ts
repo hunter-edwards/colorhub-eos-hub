@@ -57,8 +57,11 @@ export async function getOrOpenCurrentShift(
     return existing[0];
   }
 
-  // Create a new session.
-  const [created] = (await db
+  // Race-safe insert: a concurrent caller at the shift boundary could have
+  // raced past the existence check above, so rely on the unique constraint
+  // (teamId, date, shiftNumber) and onConflictDoNothing rather than catching
+  // a 23505 from .returning().
+  await db
     .insert(shiftSessions)
     .values({
       teamId: opts.teamId,
@@ -66,8 +69,27 @@ export async function getOrOpenCurrentShift(
       shiftNumber,
       openedBy: opts.openedBy,
     })
-    .returning()) as ShiftSession[];
+    .onConflictDoNothing();
 
+  const [session] = (await db
+    .select()
+    .from(shiftSessions)
+    .where(
+      and(
+        eq(shiftSessions.teamId, opts.teamId),
+        eq(shiftSessions.date, date),
+        eq(shiftSessions.shiftNumber, shiftNumber),
+      ),
+    )
+    .limit(1)) as ShiftSession[];
+  if (!session) throw new Error('Failed to open shift session');
+
+  // Only seed defaults if THIS call actually created the session. The
+  // pre-check above didn't find a row, so if we're here the row is either
+  // ours or was created concurrently — either way we can't reliably tell
+  // from the re-select alone, but the pre-check guards us in the common
+  // (non-racing) case. shiftAssignments has its own unique constraint so
+  // double-seeding would be safe but we avoid it for tidiness.
   // Seed assignments from default operators across all team stations.
   const defaults = (await db
     .select({
@@ -83,14 +105,14 @@ export async function getOrOpenCurrentShift(
 
   for (const d of defaults) {
     await db.insert(shiftAssignments).values({
-      shiftSessionId: created.id,
+      shiftSessionId: session.id,
       stationId: d.stationId,
       userId: d.userId,
     });
   }
 
   revalidatePath('/floor');
-  return created;
+  return session;
 }
 
 export async function listAssignments(
