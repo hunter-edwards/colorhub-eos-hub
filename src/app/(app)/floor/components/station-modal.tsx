@@ -9,6 +9,7 @@ import type { ShiftEvent } from '@/server/floor-events';
 import type { FloorStationView } from '@/lib/floor-types';
 import { progress } from '@/lib/floor-progress-utils';
 import { assignOperatorAction, unassignOperatorAction } from '../floor-board-actions';
+import { startJobAction } from '../floor-actions';
 
 type PmRow = {
   pmId: string;
@@ -386,22 +387,58 @@ export function StationModal(props: StationModalProps) {
           </section>
 
           {/* Quick action strip */}
-          <section
-            data-section="quick-actions"
-            className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 px-6 py-4 bg-[var(--floor-bg)] border-t border-white/10"
-          >
-            <QuickActionButton label="Start job" disabled />
-            <QuickActionButton label="Pause" disabled />
-            <QuickActionButton label="Resume" disabled />
-            <QuickActionButton label="Complete job" disabled />
-            <QuickActionButton label="Log waste" disabled />
-            <QuickActionButton label="Note issue" disabled />
-            <QuickActionButton label="Mark PM done" disabled />
-          </section>
+          <QuickActionsBar
+            shiftSessionId={shiftSessionId}
+            stationId={station?.id ?? null}
+            current={current}
+          />
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );
+}
+
+function QuickActionsBar({
+  shiftSessionId,
+  stationId,
+  current,
+}: {
+  shiftSessionId: string | null;
+  stationId: string | null;
+  current: FloorStationView['current'];
+}) {
+  const [busy, setBusy] = useState(false);
+  const canStart = !!shiftSessionId && !!stationId && !!current && !busy;
+
+  async function onStart() {
+    if (!canStart) return;
+    setBusy(true);
+    try {
+      await startJobAction({
+        shiftSessionId: shiftSessionId!,
+        stationId: stationId!,
+        knackJobId: current!.id ?? null,
+        jobNumber: current!.jobNumber ?? null,
+        customer: current!.customer ?? null,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      data-section="quick-actions"
+      className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 px-6 py-4 bg-[var(--floor-bg)] border-t border-white/10"
+    >
+      <QuickActionButton label="Start job" disabled={!canStart} onClick={onStart} />
+      <QuickActionButton label="Pause" disabled />
+      <QuickActionButton label="Resume" disabled />
+      <QuickActionButton label="Complete job" disabled />
+      <QuickActionButton label="Log waste" disabled />
+      <QuickActionButton label="Note issue" disabled />
+      <QuickActionButton label="Mark PM done" disabled />
+    </section>);
 }
 
 function QuickActionButton({
