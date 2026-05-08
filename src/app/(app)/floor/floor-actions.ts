@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { recordEvent } from '@/server/floor-events';
+import { markPmDone } from '@/server/floor-pm';
 import { createClient } from '@/lib/supabase/server';
 
 async function requireUserId() {
@@ -88,6 +89,54 @@ export async function startJobAction(input: {
     },
     recordedBy,
     relatedKnackJobId: input.knackJobId ?? undefined,
+  });
+  revalidatePath('/floor');
+}
+
+export async function logWasteAction(input: {
+  shiftSessionId: string;
+  stationId: string;
+  sheets: number;
+  reason?: string;
+}) {
+  const recordedBy = await requireUserId();
+  await recordEvent({
+    shiftSessionId: input.shiftSessionId,
+    stationId: input.stationId,
+    kind: 'waste_logged',
+    payload: { sheets: input.sheets, reason: input.reason ?? null },
+    recordedBy,
+  });
+  revalidatePath('/floor');
+}
+
+export async function noteIssueAction(input: {
+  shiftSessionId: string;
+  stationId: string;
+  text: string;
+}) {
+  const recordedBy = await requireUserId();
+  await recordEvent({
+    shiftSessionId: input.shiftSessionId,
+    stationId: input.stationId,
+    kind: 'issue_noted',
+    payload: { text: input.text },
+    recordedBy,
+  });
+  revalidatePath('/floor');
+}
+
+export async function markPmDoneAction(input: {
+  pmScheduleId: string;
+  stationId: string;
+  shiftSessionId: string;
+}) {
+  const recordedBy = await requireUserId();
+  await markPmDone({
+    pmScheduleId: input.pmScheduleId,
+    stationId: input.stationId,
+    recordedBy,
+    shiftSessionId: input.shiftSessionId,
   });
   revalidatePath('/floor');
 }

@@ -15,6 +15,9 @@ import {
   pauseJobAction,
   resumeJobAction,
   completeJobAction,
+  logWasteAction,
+  noteIssueAction,
+  markPmDoneAction,
 } from '../floor-actions';
 
 type PmRow = {
@@ -356,13 +359,11 @@ export function StationModal(props: StationModalProps) {
                       >
                         {p.level.toUpperCase()}
                       </span>
-                      <button
-                        type="button"
-                        disabled
-                        className="floor-chip rounded-md bg-white/10 px-3 py-1 ring-1 ring-white/15 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Mark PM done
-                      </button>
+                      <PmRowMarkDoneButton
+                        pmId={p.pmId}
+                        stationId={station?.id ?? null}
+                        shiftSessionId={shiftSessionId}
+                      />
                     </div>
                   </li>
                 ))}
@@ -400,13 +401,9 @@ export function StationModal(props: StationModalProps) {
               {issuesFromKnack.length === 0 && noteEvents.length === 0 && (
                 <div className="floor-body text-white/40">No notes</div>
               )}
-              <button
-                type="button"
-                disabled
-                className="floor-chip self-start mt-1 rounded-md bg-white/10 px-3 py-1 ring-1 ring-white/15 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Add note
-              </button>
+              <div className="floor-chip text-white/40 mt-1">
+                Use the &ldquo;Note issue&rdquo; quick action below to add a note.
+              </div>
             </div>
           </section>
 
@@ -416,6 +413,7 @@ export function StationModal(props: StationModalProps) {
             stationId={station?.id ?? null}
             current={current}
             status={status}
+            pmRows={pmRows}
           />
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
@@ -437,11 +435,13 @@ function QuickActionsBar({
   stationId,
   current,
   status,
+  pmRows,
 }: {
   shiftSessionId: string | null;
   stationId: string | null;
   current: FloorStationView['current'];
   status: 'running' | 'setup' | 'down' | 'idle';
+  pmRows: PmRow[];
 }) {
   const [busy, setBusy] = useState(false);
   const [pausePickerOpen, setPausePickerOpen] = useState(false);
@@ -449,11 +449,20 @@ function QuickActionsBar({
   const [pauseNote, setPauseNote] = useState<string>('');
   const [completeOpen, setCompleteOpen] = useState(false);
   const [finalSheets, setFinalSheets] = useState<string>('');
+  const [wasteOpen, setWasteOpen] = useState(false);
+  const [wasteSheets, setWasteSheets] = useState<string>('');
+  const [wasteReason, setWasteReason] = useState<string>('');
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [issueText, setIssueText] = useState<string>('');
+  const [pmOpen, setPmOpen] = useState(false);
 
   const canStart = !!shiftSessionId && !!stationId && !!current && !busy;
   const canPause = !!shiftSessionId && !!stationId && status === 'running' && !busy;
   const canResume = !!shiftSessionId && !!stationId && status === 'setup' && !busy;
   const canComplete = !!shiftSessionId && !!stationId && status === 'running' && !busy;
+  const canWaste = !!shiftSessionId && !!stationId && !busy;
+  const canIssue = !!shiftSessionId && !!stationId && !busy;
+  const canPm = !!shiftSessionId && !!stationId && pmRows.length > 0 && !busy;
 
   async function onStart() {
     if (!canStart) return;
@@ -530,6 +539,61 @@ function QuickActionsBar({
     }
   }
 
+  async function onConfirmWaste() {
+    if (!shiftSessionId || !stationId || busy) return;
+    const sheets = Number.parseInt(wasteSheets, 10);
+    if (!Number.isFinite(sheets) || sheets <= 0) return;
+    setBusy(true);
+    try {
+      await logWasteAction({
+        shiftSessionId,
+        stationId,
+        sheets,
+        reason: wasteReason.trim() || undefined,
+      });
+      setWasteOpen(false);
+      setWasteSheets('');
+      setWasteReason('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onConfirmIssue() {
+    if (!shiftSessionId || !stationId || busy) return;
+    const text = issueText.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      await noteIssueAction({
+        shiftSessionId,
+        stationId,
+        text,
+      });
+      setIssueOpen(false);
+      setIssueText('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onMarkPm(pmId: string) {
+    if (!shiftSessionId || !stationId || busy) return;
+    setBusy(true);
+    try {
+      await markPmDoneAction({
+        pmScheduleId: pmId,
+        stationId,
+        shiftSessionId,
+      });
+      // Keep the picker open so the user can see the row level update on next poll;
+      // close if it was the only one.
+      if (pmRows.length <= 1) setPmOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section
       data-section="quick-actions"
@@ -548,9 +612,21 @@ function QuickActionsBar({
           disabled={!canComplete}
           onClick={openComplete}
         />
-        <QuickActionButton label="Log waste" disabled />
-        <QuickActionButton label="Note issue" disabled />
-        <QuickActionButton label="Mark PM done" disabled />
+        <QuickActionButton
+          label="Log waste"
+          disabled={!canWaste}
+          onClick={() => setWasteOpen((v) => !v)}
+        />
+        <QuickActionButton
+          label="Note issue"
+          disabled={!canIssue}
+          onClick={() => setIssueOpen((v) => !v)}
+        />
+        <QuickActionButton
+          label="Mark PM done"
+          disabled={!canPm}
+          onClick={() => setPmOpen((v) => !v)}
+        />
       </div>
       {completeOpen && (
         <div
@@ -634,7 +710,156 @@ function QuickActionsBar({
           </div>
         </div>
       )}
+      {wasteOpen && (
+        <div
+          data-section="waste-form"
+          className="rounded-lg bg-white/5 ring-1 ring-white/10 px-4 py-3 flex flex-col gap-3"
+        >
+          <div className="floor-chip text-white/60">Log waste</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2">
+              <span className="floor-body text-white/70">Sheets</span>
+              <input
+                type="number"
+                min={1}
+                value={wasteSheets}
+                onChange={(e) => setWasteSheets(e.target.value)}
+                className="floor-body w-32 rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-2 outline-none focus:ring-white/30 tabular-nums"
+              />
+            </label>
+            <input
+              type="text"
+              value={wasteReason}
+              onChange={(e) => setWasteReason(e.target.value)}
+              placeholder="Reason (optional)"
+              className="floor-body flex-1 min-w-[12rem] rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-2 outline-none focus:ring-white/30"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || !Number.isFinite(Number.parseInt(wasteSheets, 10)) || Number.parseInt(wasteSheets, 10) <= 0}
+              onClick={onConfirmWaste}
+              className="floor-title rounded-lg bg-rose-500/30 ring-1 ring-rose-400/40 text-rose-100 px-4 py-2 hover:bg-rose-500/40 disabled:opacity-40"
+            >
+              Save waste
+            </button>
+            <button
+              type="button"
+              onClick={() => setWasteOpen(false)}
+              className="floor-chip rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-1 hover:bg-white/15"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {issueOpen && (
+        <div
+          data-section="issue-form"
+          className="rounded-lg bg-white/5 ring-1 ring-white/10 px-4 py-3 flex flex-col gap-3"
+        >
+          <div className="floor-chip text-white/60">Note issue</div>
+          <textarea
+            value={issueText}
+            onChange={(e) => setIssueText(e.target.value)}
+            rows={3}
+            placeholder="What's going on?"
+            className="floor-body rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-2 outline-none focus:ring-white/30 resize-y"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || !issueText.trim()}
+              onClick={onConfirmIssue}
+              className="floor-title rounded-lg bg-amber-500/30 ring-1 ring-amber-400/40 text-amber-100 px-4 py-2 hover:bg-amber-500/40 disabled:opacity-40"
+            >
+              Save issue
+            </button>
+            <button
+              type="button"
+              onClick={() => setIssueOpen(false)}
+              className="floor-chip rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-1 hover:bg-white/15"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {pmOpen && (
+        <div
+          data-section="pm-quick"
+          className="rounded-lg bg-white/5 ring-1 ring-white/10 px-4 py-3 flex flex-col gap-2"
+        >
+          <div className="floor-chip text-white/60">Mark PM done</div>
+          {pmRows.length === 0 ? (
+            <div className="floor-body text-white/40">No PM schedules</div>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {pmRows.map((p) => (
+                <li
+                  key={p.pmId}
+                  className="flex items-center justify-between gap-3 rounded-md bg-white/5 px-3 py-2"
+                >
+                  <span className="floor-body truncate">{p.label}</span>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onMarkPm(p.pmId)}
+                    className="floor-chip rounded-md bg-emerald-500/30 ring-1 ring-emerald-400/40 text-emerald-100 px-3 py-1 hover:bg-emerald-500/40 disabled:opacity-40"
+                  >
+                    Mark done
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => setPmOpen(false)}
+            className="floor-chip self-start rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-1 hover:bg-white/15"
+          >
+            Close
+          </button>
+        </div>
+      )}
     </section>
+  );
+}
+
+function PmRowMarkDoneButton({
+  pmId,
+  stationId,
+  shiftSessionId,
+}: {
+  pmId: string;
+  stationId: string | null;
+  shiftSessionId: string | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const disabled = !stationId || !shiftSessionId || busy;
+  async function onClick() {
+    if (disabled) return;
+    setBusy(true);
+    try {
+      await markPmDoneAction({
+        pmScheduleId: pmId,
+        stationId: stationId!,
+        shiftSessionId: shiftSessionId!,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="floor-chip rounded-md bg-white/10 px-3 py-1 ring-1 ring-white/15 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      Mark PM done
+    </button>
   );
 }
 
