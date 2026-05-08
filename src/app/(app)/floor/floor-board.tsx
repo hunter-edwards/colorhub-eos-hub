@@ -8,6 +8,7 @@ import type { PmStatusRow } from '@/server/floor-pm';
 import type { FloorStationView } from '@/lib/floor-types';
 import { TVHeader } from './components/tv-header';
 import { StationsGrid } from './components/stations-grid';
+import { PeopleBench } from './components/people-bench';
 
 type PmTileRow = {
   stationId: string;
@@ -135,7 +136,12 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
 
       {/* Bottom strip ~30% — three panels */}
       <div className="flex-[3] grid grid-cols-3 gap-3">
-        <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ People bench Task 26 ]</div>
+        <PeopleBench
+          members={initial.members}
+          assignments={initial.assignments}
+          defaultsByStation={initial.defaultOperatorsByStation}
+          stations={initial.stations}
+        />
         <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Tasks pool Task 28 ]</div>
         <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Events feed Task 30 ]</div>
       </div>
