@@ -1,11 +1,15 @@
 import Link from 'next/link';
 import { getRecap, getMostRecentSession } from '@/server/floor-recap';
+import { listPmStatuses } from '@/server/floor-pm';
+import { listTasks } from '@/server/floor-tasks';
 import {
   Card,
   CardHeader,
   CardTitle,
   CardContent,
 } from '@/components/ui/card';
+import { summarizeEvent, type FloorEvent } from '@/lib/floor-events-utils';
+import { HandoffTimeline } from './timeline';
 
 type SearchParams = {
   date?: string;
@@ -58,8 +62,17 @@ export default async function FloorHandoffPage({
     );
   }
 
-  const { session, recap } = data;
+  const { session, recap, events, stations } = data;
   const shiftLabel = session.shiftNumber === 1 ? '1st Shift' : '2nd Shift';
+
+  const stationIds = stations.map((s) => s.id);
+  const [pmStatuses, openTasks] = await Promise.all([
+    listPmStatuses(stationIds, new Date()),
+    listTasks({ statuses: ['open', 'in_progress'] }),
+  ]);
+  const pmsStillDue = pmStatuses.filter((p) => p.level !== 'green');
+  const stationNameById = new Map(stations.map((s) => [s.id, s.name]));
+  const issueEvents = events.filter((e) => e.kind === 'issue_noted');
 
   return (
     <div className="space-y-6">
@@ -128,6 +141,123 @@ export default async function FloorHandoffPage({
             ))}
           </div>
         )}
+      </section>
+
+      <section aria-label="Timeline" className="space-y-2">
+        <h2 className="text-lg font-semibold">Timeline</h2>
+        <HandoffTimeline events={events} stations={stations} />
+      </section>
+
+      <section aria-label="Outstanding" className="space-y-3">
+        <h2 className="text-lg font-semibold">Outstanding</h2>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>Unfinished jobs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recap.outstanding.unfinishedJobs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {recap.outstanding.unfinishedJobs.map((j, idx) => (
+                    <li key={`${j.stationId}-${j.jobNumber ?? idx}`}>
+                      <span className="font-medium">{j.jobNumber ?? '—'}</span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        @ {j.stationName}
+                        {j.sheets != null
+                          ? ` · ${j.sheets.toLocaleString('en-US')} sheets`
+                          : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>Open issues</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {issueEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {issueEvents.map((e) => (
+                    <li key={e.id}>
+                      <span className="text-muted-foreground">
+                        {e.stationId
+                          ? stationNameById.get(e.stationId) ?? '—'
+                          : '—'}
+                        {' · '}
+                      </span>
+                      {summarizeEvent(e as unknown as FloorEvent)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>PMs still due</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pmsStillDue.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {pmsStillDue.map((p) => (
+                    <li key={p.pmId}>
+                      <span
+                        className={
+                          p.level === 'red'
+                            ? 'text-red-500'
+                            : 'text-yellow-500'
+                        }
+                      >
+                        ●
+                      </span>{' '}
+                      {stationNameById.get(p.stationId) ?? '—'}
+                      <span className="text-muted-foreground">
+                        {' '}— {p.label}
+                        {p.daysUntilDue != null
+                          ? ` (${p.daysUntilDue}d)`
+                          : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>Tasks still open</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {openTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None.</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {openTasks.map((t) => (
+                    <li key={t.id}>
+                      <span className="font-medium">{t.title}</span>
+                      <span className="text-muted-foreground">
+                        {' '}— {t.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </section>
     </div>
   );
