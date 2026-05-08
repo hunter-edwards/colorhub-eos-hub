@@ -17,19 +17,23 @@ type Props = {
   operatorsByStation: Record<string, string[]>;
   pmByStation: Record<string, PmRow | null>;
   onExpand: (stationId: string) => void;
+  pulsingStationIds?: Record<string, true>;
 };
 
 function DroppableStation({
   stationId,
+  pulsing,
   children,
 }: {
   stationId: string;
+  pulsing?: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `station-${stationId}` });
   return (
     <div
       ref={setNodeRef}
+      data-pulse={pulsing ? 'true' : undefined}
       className={isOver ? 'ring-2 ring-emerald-500 rounded-lg' : undefined}
     >
       {children}
@@ -43,6 +47,7 @@ export function StationsGrid({
   operatorsByStation,
   pmByStation,
   onExpand,
+  pulsingStationIds,
 }: Props) {
   const viewById = new Map(floorView.map((v) => [v.stationId, v]));
   const sorted = [...stations].sort(
@@ -59,7 +64,11 @@ export function StationsGrid({
           queue: [],
         };
         return (
-          <DroppableStation key={s.id} stationId={s.id}>
+          <DroppableStation
+            key={s.id}
+            stationId={s.id}
+            pulsing={Boolean(pulsingStationIds?.[s.id])}
+          >
             <StationTile
               station={s}
               view={view}

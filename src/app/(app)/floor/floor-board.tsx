@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -13,12 +13,14 @@ import type { ShiftEvent } from '@/server/floor-events';
 import type { TaskRow } from '@/server/floor-tasks';
 import type { PmStatusRow } from '@/server/floor-pm';
 import type { FloorStationView } from '@/lib/floor-types';
+import { isInHuddleWindow } from '@/lib/floor-shift-utils';
 import { TVHeader } from './components/tv-header';
 import { StationsGrid } from './components/stations-grid';
 import { PeopleBench } from './components/people-bench';
 import { TasksPanel } from './components/tasks-panel';
 import { EventsFeed } from './components/events-feed';
 import { assignOperatorAction } from './floor-board-actions';
+import { useFloorPoll } from './floor-poller';
 
 type PmTileRow = {
   stationId: string;
@@ -88,12 +90,91 @@ export type FloorBoardInitial = {
 type Mode = 'huddle' | 'run';
 
 export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
-  const [mode, setMode] = useState<Mode>('huddle');
+  // Default mode: 'huddle' inside the ±10-minute huddle window, otherwise
+  // 'run'. Computed in a useState initializer so the SSR snapshot and the
+  // first client render agree.
+  const [mode, setMode] = useState<Mode>(() =>
+    isInHuddleWindow(new Date()) ? 'huddle' : 'run',
+  );
   const [, setExpandedStation] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
+
+  // Live state — seeded from `initial`, updated each tick from the poller.
+  const [events, setEvents] = useState<ShiftEvent[]>(initial.events);
+  const [assignments, setAssignments] = useState<
+    FloorBoardInitial['assignments']
+  >(initial.assignments);
+  const [tasks, setTasks] = useState<TaskRow[]>(initial.tasks);
+  const [pmStatuses, setPmStatuses] = useState<PmStatusRow[]>(
+    initial.pmStatuses,
+  );
+  const [floorView, setFloorView] = useState<FloorStationView[]>(
+    initial.floorView,
+  );
+  const [pulsingStations, setPulsingStations] = useState<
+    Record<string, true>
+  >({});
+
+  const { snapshot, lastSyncAt } = useFloorPoll(initial.session?.id ?? null);
+
+  // Track per-station pulse-clear timers so repeated bursts re-arm cleanly.
+  const pulseTimers = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (!snapshot) return;
+    if (snapshot.newEvents.length > 0) {
+      setEvents((prev) => {
+        const ids = new Set(prev.map((e) => e.id));
+        const merged = [
+          ...snapshot.newEvents.filter((e) => !ids.has(e.id)),
+          ...prev,
+        ];
+        return merged.slice(0, 200);
+      });
+      const stationIds = Array.from(
+        new Set(
+          snapshot.newEvents
+            .map((e) => e.stationId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      if (stationIds.length > 0) {
+        setPulsingStations((prev) => ({
+          ...prev,
+          ...Object.fromEntries(stationIds.map((id) => [id, true as const])),
+        }));
+        for (const id of stationIds) {
+          const existing = pulseTimers.current.get(id);
+          if (existing) window.clearTimeout(existing);
+          const timer = window.setTimeout(() => {
+            setPulsingStations((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+            pulseTimers.current.delete(id);
+          }, 1500);
+          pulseTimers.current.set(id, timer);
+        }
+      }
+    }
+    setAssignments(snapshot.assignments);
+    setTasks(snapshot.tasks);
+    setPmStatuses(snapshot.pmStatuses);
+    setFloorView(snapshot.floorView);
+  }, [snapshot]);
+
+  // Clean up any outstanding pulse timers on unmount.
+  useEffect(() => {
+    const timers = pulseTimers.current;
+    return () => {
+      for (const t of timers.values()) window.clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   function handleDragEnd(e: DragEndEvent) {
     if (!e.over || !initial.session) return;
@@ -102,7 +183,7 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
     const userName = initial.members.find((m) => m.id === userId)?.name ?? null;
     const stationName =
       initial.stations.find((s) => s.id === stationId)?.name ?? null;
-    const currentStation = initial.assignments.find((a) => a.userId === userId);
+    const currentStation = assignments.find((a) => a.userId === userId);
     const fromStationName = currentStation
       ? initial.stations.find((s) => s.id === currentStation.stationId)?.name ?? null
       : null;
@@ -122,11 +203,11 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   }
 
   const operatorsByStation = buildOperatorsByStation(
-    initial.assignments,
+    assignments,
     initial.defaultOperatorsByStation,
     initial.members,
   );
-  const pmByStation = buildPmByStation(initial.pmStatuses);
+  const pmByStation = buildPmByStation(pmStatuses);
 
   const sessionStatus: 'live' | 'pre-shift' | 'handoff' =
     initial.session && !initial.session.closedAt
@@ -137,9 +218,9 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
 
   const counts = {
     operators: initial.members.length,
-    pmsDue: initial.pmStatuses.filter((p) => p.level !== 'green').length,
-    openIssues: initial.events.filter((e) => e.kind === 'issue_noted').length,
-    tasksOpen: initial.tasks.filter(
+    pmsDue: pmStatuses.filter((p) => p.level !== 'green').length,
+    openIssues: events.filter((e) => e.kind === 'issue_noted').length,
+    tasksOpen: tasks.filter(
       (t) => t.status === 'open' || t.status === 'in_progress',
     ).length,
   };
@@ -149,14 +230,18 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
     : null;
 
   return (
-    <div data-floor-tv="true" className="min-h-[calc(100vh-3rem)] -m-6 p-4 flex flex-col gap-3">
+    <div
+      data-floor-tv="true"
+      data-floor-mode={mode}
+      className="min-h-[calc(100vh-3rem)] -m-6 p-4 flex flex-col gap-3"
+    >
       <TVHeader
         shift={initial.shift}
         sessionStatus={sessionStatus}
         mode={mode}
         counts={counts}
         sessionOpenedAt={sessionOpenedAt}
-        lastSyncAt={new Date()}
+        lastSyncAt={lastSyncAt}
         onModeChange={setMode}
         onCounterClick={() => {
           /* TODO Task 31 — scroll/highlight panel */
@@ -165,30 +250,31 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         {/* Stations grid takes ~70% */}
-        <div className="flex-[7] min-h-0">
+        <div className="floor-grid-row flex-[7] min-h-0">
           <StationsGrid
             stations={initial.stations}
-            floorView={initial.floorView}
+            floorView={floorView}
             operatorsByStation={operatorsByStation}
             pmByStation={pmByStation}
             onExpand={setExpandedStation}
+            pulsingStationIds={pulsingStations}
           />
         </div>
 
         {/* Bottom strip ~30% — three panels */}
-        <div className="flex-[3] grid grid-cols-3 gap-3">
+        <div className="floor-bottom-strip flex-[3] grid grid-cols-3 gap-3">
           <PeopleBench
             members={initial.members}
-            assignments={initial.assignments}
+            assignments={assignments}
             defaultsByStation={initial.defaultOperatorsByStation}
             stations={initial.stations}
           />
           <TasksPanel
-            tasks={initial.tasks}
+            tasks={tasks}
             stations={initial.stations}
             shiftSessionId={initial.session?.id ?? null}
           />
-          <EventsFeed events={initial.events} stations={initial.stations} />
+          <EventsFeed events={events} stations={initial.stations} />
         </div>
       </DndContext>
     </div>
