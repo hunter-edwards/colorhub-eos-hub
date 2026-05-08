@@ -13,6 +13,45 @@ async function requireUserId() {
   return user.id;
 }
 
+export async function resumeJobAction(input: {
+  shiftSessionId: string;
+  stationId: string;
+}) {
+  const recordedBy = await requireUserId();
+  await recordEvent({
+    shiftSessionId: input.shiftSessionId,
+    stationId: input.stationId,
+    kind: 'job_resumed',
+    payload: {},
+    recordedBy,
+  });
+  revalidatePath('/floor');
+}
+
+export async function completeJobAction(input: {
+  shiftSessionId: string;
+  stationId: string;
+  jobNumber: string | null;
+  finalSheets: number | null;
+  customer: string | null;
+  knackJobId: string | null;
+}) {
+  const recordedBy = await requireUserId();
+  await recordEvent({
+    shiftSessionId: input.shiftSessionId,
+    stationId: input.stationId,
+    kind: 'job_completed',
+    payload: {
+      jobNumber: input.jobNumber,
+      customer: input.customer,
+      sheets: input.finalSheets,
+    },
+    recordedBy,
+    relatedKnackJobId: input.knackJobId ?? undefined,
+  });
+  revalidatePath('/floor');
+}
+
 export async function pauseJobAction(input: {
   shiftSessionId: string;
   stationId: string;

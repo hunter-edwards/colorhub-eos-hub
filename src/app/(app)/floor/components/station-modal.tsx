@@ -10,7 +10,12 @@ import type { FloorStationView } from '@/lib/floor-types';
 import { progress } from '@/lib/floor-progress-utils';
 import { deriveStationStatus, type FloorEvent } from '@/lib/floor-events-utils';
 import { assignOperatorAction, unassignOperatorAction } from '../floor-board-actions';
-import { startJobAction, pauseJobAction } from '../floor-actions';
+import {
+  startJobAction,
+  pauseJobAction,
+  resumeJobAction,
+  completeJobAction,
+} from '../floor-actions';
 
 type PmRow = {
   pmId: string;
@@ -442,9 +447,13 @@ function QuickActionsBar({
   const [pausePickerOpen, setPausePickerOpen] = useState(false);
   const [pauseReason, setPauseReason] = useState<string>('material');
   const [pauseNote, setPauseNote] = useState<string>('');
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [finalSheets, setFinalSheets] = useState<string>('');
 
   const canStart = !!shiftSessionId && !!stationId && !!current && !busy;
   const canPause = !!shiftSessionId && !!stationId && status === 'running' && !busy;
+  const canResume = !!shiftSessionId && !!stationId && status === 'setup' && !busy;
+  const canComplete = !!shiftSessionId && !!stationId && status === 'running' && !busy;
 
   async function onStart() {
     if (!canStart) return;
@@ -457,6 +466,47 @@ function QuickActionsBar({
         jobNumber: current!.jobNumber ?? null,
         customer: current!.customer ?? null,
       });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onResume() {
+    if (!canResume) return;
+    setBusy(true);
+    try {
+      await resumeJobAction({
+        shiftSessionId: shiftSessionId!,
+        stationId: stationId!,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openComplete() {
+    if (!canComplete) return;
+    const fallback = current?.sheetsCompleted ?? current?.sheetsNeeded ?? 0;
+    setFinalSheets(String(fallback));
+    setCompleteOpen(true);
+  }
+
+  async function onConfirmComplete() {
+    if (!shiftSessionId || !stationId || busy) return;
+    const parsed = Number.parseInt(finalSheets, 10);
+    const sheets = Number.isFinite(parsed) ? parsed : null;
+    setBusy(true);
+    try {
+      await completeJobAction({
+        shiftSessionId,
+        stationId,
+        jobNumber: current?.jobNumber ?? null,
+        customer: current?.customer ?? null,
+        knackJobId: current?.id ?? null,
+        finalSheets: sheets,
+      });
+      setCompleteOpen(false);
+      setFinalSheets('');
     } finally {
       setBusy(false);
     }
@@ -492,12 +542,50 @@ function QuickActionsBar({
           disabled={!canPause}
           onClick={() => setPausePickerOpen((v) => !v)}
         />
-        <QuickActionButton label="Resume" disabled />
-        <QuickActionButton label="Complete job" disabled />
+        <QuickActionButton label="Resume" disabled={!canResume} onClick={onResume} />
+        <QuickActionButton
+          label="Complete job"
+          disabled={!canComplete}
+          onClick={openComplete}
+        />
         <QuickActionButton label="Log waste" disabled />
         <QuickActionButton label="Note issue" disabled />
         <QuickActionButton label="Mark PM done" disabled />
       </div>
+      {completeOpen && (
+        <div
+          data-section="complete-confirm"
+          className="rounded-lg bg-white/5 ring-1 ring-white/10 px-4 py-3 flex flex-col gap-3"
+        >
+          <div className="floor-chip text-white/60">Confirm completion</div>
+          <label className="flex items-center gap-3">
+            <span className="floor-body text-white/70">Final sheets</span>
+            <input
+              type="number"
+              value={finalSheets}
+              onChange={(e) => setFinalSheets(e.target.value)}
+              className="floor-body w-40 rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-2 outline-none focus:ring-white/30 tabular-nums"
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onConfirmComplete}
+              className="floor-title rounded-lg bg-emerald-500/30 ring-1 ring-emerald-400/40 text-emerald-100 px-4 py-2 hover:bg-emerald-500/40 disabled:opacity-40"
+            >
+              Confirm complete
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompleteOpen(false)}
+              className="floor-chip rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-1 hover:bg-white/15"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {pausePickerOpen && (
         <div
           data-section="pause-picker"
