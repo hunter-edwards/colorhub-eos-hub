@@ -1,5 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import type { Station } from '@/server/floor-stations';
 import type { ShiftSession } from '@/server/floor-shifts';
 import type { ShiftEvent } from '@/server/floor-events';
@@ -9,6 +16,7 @@ import type { FloorStationView } from '@/lib/floor-types';
 import { TVHeader } from './components/tv-header';
 import { StationsGrid } from './components/stations-grid';
 import { PeopleBench } from './components/people-bench';
+import { assignOperatorAction } from './floor-board-actions';
 
 type PmTileRow = {
   stationId: string;
@@ -80,6 +88,36 @@ type Mode = 'huddle' | 'run';
 export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   const [mode, setMode] = useState<Mode>('huddle');
   const [, setExpandedStation] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  function handleDragEnd(e: DragEndEvent) {
+    if (!e.over || !initial.session) return;
+    const userId = String(e.active.id).replace('member-', '');
+    const stationId = String(e.over.id).replace('station-', '');
+    const userName = initial.members.find((m) => m.id === userId)?.name ?? null;
+    const stationName =
+      initial.stations.find((s) => s.id === stationId)?.name ?? null;
+    const currentStation = initial.assignments.find((a) => a.userId === userId);
+    const fromStationName = currentStation
+      ? initial.stations.find((s) => s.id === currentStation.stationId)?.name ?? null
+      : null;
+    if (!initial.session) return;
+    const sessionId = initial.session.id;
+    startTransition(() => {
+      void assignOperatorAction({
+        shiftSessionId: sessionId,
+        stationId,
+        userId,
+        fromStationId: currentStation?.stationId ?? null,
+        fromStationName,
+        toStationName: stationName,
+        userName,
+      });
+    });
+  }
 
   const operatorsByStation = buildOperatorsByStation(
     initial.assignments,
@@ -123,28 +161,30 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
         }}
       />
 
-      {/* Stations grid takes ~70% */}
-      <div className="flex-[7] min-h-0">
-        <StationsGrid
-          stations={initial.stations}
-          floorView={initial.floorView}
-          operatorsByStation={operatorsByStation}
-          pmByStation={pmByStation}
-          onExpand={setExpandedStation}
-        />
-      </div>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        {/* Stations grid takes ~70% */}
+        <div className="flex-[7] min-h-0">
+          <StationsGrid
+            stations={initial.stations}
+            floorView={initial.floorView}
+            operatorsByStation={operatorsByStation}
+            pmByStation={pmByStation}
+            onExpand={setExpandedStation}
+          />
+        </div>
 
-      {/* Bottom strip ~30% — three panels */}
-      <div className="flex-[3] grid grid-cols-3 gap-3">
-        <PeopleBench
-          members={initial.members}
-          assignments={initial.assignments}
-          defaultsByStation={initial.defaultOperatorsByStation}
-          stations={initial.stations}
-        />
-        <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Tasks pool Task 28 ]</div>
-        <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Events feed Task 30 ]</div>
-      </div>
+        {/* Bottom strip ~30% — three panels */}
+        <div className="flex-[3] grid grid-cols-3 gap-3">
+          <PeopleBench
+            members={initial.members}
+            assignments={initial.assignments}
+            defaultsByStation={initial.defaultOperatorsByStation}
+            stations={initial.stations}
+          />
+          <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Tasks pool Task 28 ]</div>
+          <div className="rounded-md border border-white/10 p-4 floor-body opacity-50">[ Events feed Task 30 ]</div>
+        </div>
+      </DndContext>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { useDroppable } from '@dnd-kit/core';
 import type { Station } from '@/server/floor-stations';
 import type { FloorStationView } from '@/lib/floor-types';
 import { StationTile } from './station-tile';
@@ -17,6 +18,24 @@ type Props = {
   pmByStation: Record<string, PmRow | null>;
   onExpand: (stationId: string) => void;
 };
+
+function DroppableStation({
+  stationId,
+  children,
+}: {
+  stationId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `station-${stationId}` });
+  return (
+    <div
+      ref={setNodeRef}
+      className={isOver ? 'ring-2 ring-emerald-500 rounded-lg' : undefined}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function StationsGrid({
   stations,
@@ -40,14 +59,15 @@ export function StationsGrid({
           queue: [],
         };
         return (
-          <StationTile
-            key={s.id}
-            station={s}
-            view={view}
-            operators={operatorsByStation[s.id] ?? []}
-            pm={pmByStation[s.id] ?? null}
-            onExpand={onExpand}
-          />
+          <DroppableStation key={s.id} stationId={s.id}>
+            <StationTile
+              station={s}
+              view={view}
+              operators={operatorsByStation[s.id] ?? []}
+              pm={pmByStation[s.id] ?? null}
+              onExpand={onExpand}
+            />
+          </DroppableStation>
         );
       })}
     </div>

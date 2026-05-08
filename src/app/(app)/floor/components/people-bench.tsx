@@ -1,5 +1,7 @@
 'use client';
 
+import { useDraggable } from '@dnd-kit/core';
+
 type Member = { id: string; name: string | null; email: string };
 
 type Props = {
@@ -65,6 +67,38 @@ function resolveMember(
   };
 }
 
+function MemberChip({ member }: { member: ResolvedMember }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `member-${member.id}`,
+  });
+  const style: React.CSSProperties | undefined = transform
+    ? {
+        transform: `translate(${transform.x}px, ${transform.y}px)`,
+        zIndex: 50,
+      }
+    : undefined;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`floor-chip flex flex-col items-start px-2 py-1 rounded-md bg-white/5 ring-1 ring-white/10 cursor-grab active:cursor-grabbing select-none ${
+        isDragging ? 'opacity-70 ring-emerald-400/60' : ''
+      }`}
+    >
+      <span className="font-semibold text-white">{member.displayName}</span>
+      <span
+        className={`text-[10px] uppercase tracking-wider ${
+          member.stationId === null ? 'text-amber-300' : 'text-white/60'
+        }`}
+      >
+        {member.stationLabel}
+      </span>
+    </div>
+  );
+}
+
 export function PeopleBench({
   members,
   assignments,
@@ -96,19 +130,7 @@ export function PeopleBench({
       <div className="floor-title mb-2">On shift: {members.length}</div>
       <div className="flex flex-wrap gap-2 overflow-auto min-h-0">
         {resolved.map((r) => (
-          <div
-            key={r.id}
-            className="floor-chip flex flex-col items-start px-2 py-1 rounded-md bg-white/5 ring-1 ring-white/10"
-          >
-            <span className="font-semibold text-white">{r.displayName}</span>
-            <span
-              className={`text-[10px] uppercase tracking-wider ${
-                r.stationId === null ? 'text-amber-300' : 'text-white/60'
-              }`}
-            >
-              {r.stationLabel}
-            </span>
-          </div>
+          <MemberChip key={r.id} member={r} />
         ))}
       </div>
     </div>
