@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -19,6 +19,7 @@ import { StationsGrid } from './components/stations-grid';
 import { PeopleBench } from './components/people-bench';
 import { TasksPanel } from './components/tasks-panel';
 import { EventsFeed } from './components/events-feed';
+import { StationModal } from './components/station-modal';
 import { assignOperatorAction } from './floor-board-actions';
 import { useFloorPoll } from './floor-poller';
 
@@ -96,7 +97,7 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   const [mode, setMode] = useState<Mode>(() =>
     isInHuddleWindow(new Date()) ? 'huddle' : 'run',
   );
-  const [, setExpandedStation] = useState<string | null>(null);
+  const [expandedStation, setExpandedStation] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -229,10 +230,48 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
     ? new Date(initial.session.openedAt as unknown as string)
     : null;
 
+  const expandedStationData = useMemo(() => {
+    if (!expandedStation) return null;
+    return {
+      station:
+        initial.stations.find((s) => s.id === expandedStation) ?? null,
+      view: floorView.find((v) => v.stationId === expandedStation) ?? null,
+    };
+  }, [expandedStation, initial.stations, floorView]);
+
+  const expandedAssignedOperators = useMemo(() => {
+    if (!expandedStation) return [];
+    return assignments
+      .filter((a) => a.stationId === expandedStation)
+      .map((a) => ({
+        id: a.userId,
+        name: initial.members.find((m) => m.id === a.userId)?.name ?? '',
+      }));
+  }, [expandedStation, assignments, initial.members]);
+
+  const expandedPmRows = useMemo(() => {
+    if (!expandedStation) return [];
+    return pmStatuses
+      .filter((p) => p.stationId === expandedStation)
+      .map((p) => ({
+        pmId: p.pmId,
+        level: p.level,
+        daysUntilDue: p.daysUntilDue,
+        nextDueAt: p.nextDueAt,
+        label: p.label,
+      }));
+  }, [expandedStation, pmStatuses]);
+
+  const expandedEvents = useMemo(() => {
+    if (!expandedStation) return [];
+    return events.filter((e) => e.stationId === expandedStation);
+  }, [expandedStation, events]);
+
   return (
     <div
       data-floor-tv="true"
       data-floor-mode={mode}
+      data-modal-open={expandedStation ? 'true' : undefined}
       className="min-h-[calc(100vh-3rem)] -m-6 p-4 flex flex-col gap-3"
     >
       <TVHeader
@@ -277,6 +316,20 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
           <EventsFeed events={events} stations={initial.stations} />
         </div>
       </DndContext>
+
+      <StationModal
+        open={!!expandedStation}
+        onOpenChange={(o) => {
+          if (!o) setExpandedStation(null);
+        }}
+        station={expandedStationData?.station ?? null}
+        view={expandedStationData?.view ?? null}
+        shiftSessionId={initial.session?.id ?? null}
+        events={expandedEvents}
+        assignedOperators={expandedAssignedOperators}
+        pmRows={expandedPmRows}
+        members={initial.members}
+      />
     </div>
   );
 }

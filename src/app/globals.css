@@ -161,3 +161,6 @@
 /* Run mode: shrink the bottom strip from ~30% to ~20%. */
 [data-floor-tv][data-floor-mode="run"] .floor-grid-row    { flex: 8; }
 [data-floor-tv][data-floor-mode="run"] .floor-bottom-strip { flex: 2; }
+
+/* When the station expand modal is open, dim the bottom strip behind it. */
+[data-floor-tv][data-modal-open="true"] .floor-bottom-strip { opacity: 0.4; }
