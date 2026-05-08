@@ -118,6 +118,32 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   const [pulsingStations, setPulsingStations] = useState<
     Record<string, true>
   >({});
+  const [handoffDismissed, setHandoffDismissed] = useState(false);
+
+  // Read dismissal state from localStorage after mount to avoid SSR mismatch.
+  useEffect(() => {
+    if (!initial.previousSessionId || !initial.previousHandoffNotes) return;
+    try {
+      const stored = window.localStorage.getItem('floor-handoff-dismissed');
+      if (stored === initial.previousSessionId) setHandoffDismissed(true);
+    } catch {
+      // localStorage unavailable; treat as not dismissed.
+    }
+  }, [initial.previousSessionId, initial.previousHandoffNotes]);
+
+  function dismissHandoffBanner() {
+    setHandoffDismissed(true);
+    if (initial.previousSessionId) {
+      try {
+        window.localStorage.setItem(
+          'floor-handoff-dismissed',
+          initial.previousSessionId,
+        );
+      } catch {
+        // ignore.
+      }
+    }
+  }
 
   const { snapshot, lastSyncAt } = useFloorPoll(initial.session?.id ?? null);
 
@@ -286,6 +312,23 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
           /* TODO Task 31 — scroll/highlight panel */
         }}
       />
+
+      {!handoffDismissed && initial.previousHandoffNotes && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2 floor-body flex items-start gap-3">
+          <span className="font-semibold">From last shift:</span>
+          <span className="flex-1 whitespace-pre-wrap">
+            {initial.previousHandoffNotes}
+          </span>
+          <button
+            type="button"
+            onClick={dismissHandoffBanner}
+            aria-label="Dismiss handoff notes"
+            className="px-1 leading-none"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         {/* Stations grid takes ~70% */}

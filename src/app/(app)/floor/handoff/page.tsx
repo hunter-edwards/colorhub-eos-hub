@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/card';
 import { summarizeEvent, type FloorEvent } from '@/lib/floor-events-utils';
 import { HandoffTimeline } from './timeline';
+import { HandoffNotesEditor } from './notes-editor';
 
 type SearchParams = {
   date?: string;
@@ -73,6 +74,12 @@ export default async function FloorHandoffPage({
   const pmsStillDue = pmStatuses.filter((p) => p.level !== 'green');
   const stationNameById = new Map(stations.map((s) => [s.id, s.name]));
   const issueEvents = events.filter((e) => e.kind === 'issue_noted');
+
+  const sessionStartedAt = new Date(
+    session.openedAt as unknown as string,
+  ).getTime();
+  const fourHoursMs = 4 * 60 * 60 * 1000;
+  const notesReadOnly = Date.now() - sessionStartedAt > fourHoursMs;
 
   return (
     <div className="space-y-6">
@@ -258,6 +265,18 @@ export default async function FloorHandoffPage({
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section aria-label="Notes" className="space-y-2">
+        <h2 className="text-lg font-semibold">Handoff notes</h2>
+        <p className="text-sm text-muted-foreground">
+          What does the next shift need to know?
+        </p>
+        <HandoffNotesEditor
+          shiftSessionId={session.id}
+          initialNotes={session.handoffNotes ?? ''}
+          readOnly={notesReadOnly}
+        />
       </section>
     </div>
   );
