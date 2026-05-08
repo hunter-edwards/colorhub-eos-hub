@@ -6,6 +6,14 @@ import { listTasks } from './floor-tasks';
 import { listPmStatuses } from './floor-pm';
 import { getFloorView } from './floor-knack';
 import { listStations } from './floor-stations';
+import { createClient } from '@/lib/supabase/server';
+
+async function requireUser() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  return user;
+}
 
 /**
  * Polled snapshot for the live /floor TV.
@@ -20,6 +28,7 @@ export async function getFloorSnapshot(
   shiftSessionId: string | null,
   sinceOccurredAtIso: string | null,
 ) {
+  await requireUser();
   const since = sinceOccurredAtIso ? new Date(sinceOccurredAtIso) : null;
 
   const [events, assignments, tasks, stations] = await Promise.all([

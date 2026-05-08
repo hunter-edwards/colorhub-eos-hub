@@ -8,6 +8,14 @@ import { listStations } from './floor-stations';
 import { computeRecap } from '@/lib/floor-recap-utils';
 import { getCurrentTeamId } from './team-helpers';
 import type { FloorEvent } from '@/lib/floor-events-utils';
+import { createClient } from '@/lib/supabase/server';
+
+async function requireUser() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  return user;
+}
 
 export type ShiftSession = typeof shiftSessions.$inferSelect;
 
@@ -16,6 +24,7 @@ export async function getRecap(opts: {
   shiftNumber?: 1 | 2;
   sessionId?: string;
 }) {
+  await requireUser();
   let session: ShiftSession | undefined;
   if (opts.sessionId) {
     const rows = (await db
@@ -61,6 +70,7 @@ export async function getRecap(opts: {
 export async function getMostRecentSession(
   now: Date,
 ): Promise<ShiftSession | null> {
+  await requireUser();
   const teamId = await getCurrentTeamId();
   const rows = (await db
     .select()

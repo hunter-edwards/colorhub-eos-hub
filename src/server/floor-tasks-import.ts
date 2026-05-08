@@ -6,6 +6,14 @@ import { todos } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getCurrentTeamId } from '@/server/team-helpers';
 import * as floorTasks from '@/server/floor-tasks';
+import { createClient } from '@/lib/supabase/server';
+
+async function requireUser() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  return user;
+}
 
 export async function importTodosAsTasksAction(todoIds: string[]) {
   const teamId = await getCurrentTeamId();
@@ -19,6 +27,7 @@ export async function importTodosAsTasksAction(todoIds: string[]) {
 export async function listOpenTodosForImport(): Promise<
   Array<{ id: string; title: string; dueDate: string | null }>
 > {
+  await requireUser();
   const rows = await db
     .select({
       id: todos.id,
