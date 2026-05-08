@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Target, CheckSquare, AlertCircle,
   LineChart, Video, History, Settings, LogOut, Moon, Sun, CalendarClock,
   Compass, Heart, Users, UserCheck, FileText, Menu,
+  Activity, ClipboardList, Wrench,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { signOut } from '@/app/login/actions';
@@ -43,6 +44,15 @@ const sections = [
       { href: '/accountability', label: 'Accountability', icon: Users },
       { href: '/people', label: 'People Analyzer', icon: UserCheck },
       { href: '/processes', label: 'Processes', icon: FileText },
+    ],
+  },
+  {
+    label: 'Floor',
+    items: [
+      { href: '/floor', label: 'Live Huddle', icon: Activity },
+      { href: '/floor/handoff', label: 'Handoff', icon: ClipboardList },
+      { href: '/floor/history', label: 'History', icon: History },
+      { href: '/floor/setup', label: 'Setup', icon: Wrench },
     ],
   },
   {
