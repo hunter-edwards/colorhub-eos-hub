@@ -7,6 +7,56 @@ import type { TaskRow } from '@/server/floor-tasks';
 import type { PmStatusRow } from '@/server/floor-pm';
 import type { FloorStationView } from '@/lib/floor-types';
 import { TVHeader } from './components/tv-header';
+import { StationsGrid } from './components/stations-grid';
+
+type PmTileRow = {
+  stationId: string;
+  level: 'green' | 'yellow' | 'red';
+  daysUntilDue: number | null;
+  label: string;
+};
+
+function buildOperatorsByStation(
+  assignments: FloorBoardInitial['assignments'],
+  defaults: FloorBoardInitial['defaultOperatorsByStation'],
+  members: FloorBoardInitial['members'],
+): Record<string, string[]> {
+  const idToName = new Map(members.map((m) => [m.id, m.name ?? m.email]));
+  const byStation: Record<string, string[]> = {};
+  for (const a of assignments) {
+    if (!byStation[a.stationId]) byStation[a.stationId] = [];
+    byStation[a.stationId].push(idToName.get(a.userId) ?? 'Unknown');
+  }
+  for (const [stationId, userIds] of Object.entries(defaults)) {
+    if (!byStation[stationId]) {
+      byStation[stationId] = userIds.map((id) => idToName.get(id) ?? 'Unknown');
+    }
+  }
+  return byStation;
+}
+
+function buildPmByStation(
+  rows: FloorBoardInitial['pmStatuses'],
+): Record<string, PmTileRow | null> {
+  const out: Record<string, PmTileRow> = {};
+  const rank: Record<'red' | 'yellow' | 'green', number> = {
+    red: 3,
+    yellow: 2,
+    green: 1,
+  };
+  for (const r of rows) {
+    const cur = out[r.stationId];
+    if (!cur || rank[r.level] > rank[cur.level]) {
+      out[r.stationId] = {
+        stationId: r.stationId,
+        level: r.level,
+        daysUntilDue: r.daysUntilDue,
+        label: r.label,
+      };
+    }
+  }
+  return out;
+}
 
 export type FloorBoardInitial = {
   now: string;
@@ -28,6 +78,14 @@ type Mode = 'huddle' | 'run';
 
 export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   const [mode, setMode] = useState<Mode>('huddle');
+  const [, setExpandedStation] = useState<string | null>(null);
+
+  const operatorsByStation = buildOperatorsByStation(
+    initial.assignments,
+    initial.defaultOperatorsByStation,
+    initial.members,
+  );
+  const pmByStation = buildPmByStation(initial.pmStatuses);
 
   const sessionStatus: 'live' | 'pre-shift' | 'handoff' =
     initial.session && !initial.session.closedAt
@@ -65,7 +123,15 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
       />
 
       {/* Stations grid takes ~70% */}
-      <div className="flex-[7] floor-body opacity-50">[ Stations grid coming Task 25 ]</div>
+      <div className="flex-[7] min-h-0">
+        <StationsGrid
+          stations={initial.stations}
+          floorView={initial.floorView}
+          operatorsByStation={operatorsByStation}
+          pmByStation={pmByStation}
+          onExpand={setExpandedStation}
+        />
+      </div>
 
       {/* Bottom strip ~30% — three panels */}
       <div className="flex-[3] grid grid-cols-3 gap-3">
