@@ -8,8 +8,9 @@ import type { Station } from '@/server/floor-stations';
 import type { ShiftEvent } from '@/server/floor-events';
 import type { FloorStationView } from '@/lib/floor-types';
 import { progress } from '@/lib/floor-progress-utils';
+import { deriveStationStatus, type FloorEvent } from '@/lib/floor-events-utils';
 import { assignOperatorAction, unassignOperatorAction } from '../floor-board-actions';
-import { startJobAction } from '../floor-actions';
+import { startJobAction, pauseJobAction } from '../floor-actions';
 
 type PmRow = {
   pmId: string;
@@ -126,7 +127,25 @@ export function StationModal(props: StationModalProps) {
     ? progress({ completed: current.sheetsReceived, needed: current.sheetsNeeded })
     : null;
 
-  const status = view?.status ?? 'idle';
+  // Derive live status from events so the pill reflects the latest action
+  // (Pause/Resume/Complete) before the next snapshot poll lands.
+  const liveStatus = useMemo(() => {
+    if (!station) return view?.status ?? 'idle';
+    const evs: FloorEvent[] = events.map((e) => ({
+      id: e.id,
+      stationId: e.stationId,
+      kind: e.kind as FloorEvent['kind'],
+      occurredAt: new Date(e.occurredAt as unknown as string),
+      payload: (e.payload as Record<string, unknown> | null) ?? {},
+    }));
+    const derived = deriveStationStatus(evs, station.id);
+    // If there are no events for this station, fall back to the snapshot view.
+    if (evs.every((e) => e.stationId !== station.id)) {
+      return view?.status ?? 'idle';
+    }
+    return derived;
+  }, [events, station, view?.status]);
+  const status = liveStatus;
 
   const issuesFromKnack = current?.issueNotes ?? [];
   const noteEvents = events.filter((e) => e.kind === 'note' || e.kind === 'issue_noted');
@@ -391,6 +410,7 @@ export function StationModal(props: StationModalProps) {
             shiftSessionId={shiftSessionId}
             stationId={station?.id ?? null}
             current={current}
+            status={status}
           />
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
@@ -398,17 +418,33 @@ export function StationModal(props: StationModalProps) {
   );
 }
 
+const PAUSE_REASONS: Array<{ key: string; label: string }> = [
+  { key: 'setup', label: 'Setup' },
+  { key: 'material', label: 'Material' },
+  { key: 'mechanical', label: 'Mechanical' },
+  { key: 'quality', label: 'Quality' },
+  { key: 'break', label: 'Break' },
+  { key: 'other', label: 'Other' },
+];
+
 function QuickActionsBar({
   shiftSessionId,
   stationId,
   current,
+  status,
 }: {
   shiftSessionId: string | null;
   stationId: string | null;
   current: FloorStationView['current'];
+  status: 'running' | 'setup' | 'down' | 'idle';
 }) {
   const [busy, setBusy] = useState(false);
+  const [pausePickerOpen, setPausePickerOpen] = useState(false);
+  const [pauseReason, setPauseReason] = useState<string>('material');
+  const [pauseNote, setPauseNote] = useState<string>('');
+
   const canStart = !!shiftSessionId && !!stationId && !!current && !busy;
+  const canPause = !!shiftSessionId && !!stationId && status === 'running' && !busy;
 
   async function onStart() {
     if (!canStart) return;
@@ -426,19 +462,92 @@ function QuickActionsBar({
     }
   }
 
+  async function onConfirmPause() {
+    if (!shiftSessionId || !stationId || busy) return;
+    setBusy(true);
+    try {
+      await pauseJobAction({
+        shiftSessionId,
+        stationId,
+        reason: pauseReason,
+        note: pauseNote.trim() || undefined,
+      });
+      setPausePickerOpen(false);
+      setPauseNote('');
+      setPauseReason('material');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section
       data-section="quick-actions"
-      className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 px-6 py-4 bg-[var(--floor-bg)] border-t border-white/10"
+      className="sticky bottom-0 z-10 flex flex-col gap-3 px-6 py-4 bg-[var(--floor-bg)] border-t border-white/10"
     >
-      <QuickActionButton label="Start job" disabled={!canStart} onClick={onStart} />
-      <QuickActionButton label="Pause" disabled />
-      <QuickActionButton label="Resume" disabled />
-      <QuickActionButton label="Complete job" disabled />
-      <QuickActionButton label="Log waste" disabled />
-      <QuickActionButton label="Note issue" disabled />
-      <QuickActionButton label="Mark PM done" disabled />
-    </section>);
+      <div className="flex flex-wrap items-center gap-2">
+        <QuickActionButton label="Start job" disabled={!canStart} onClick={onStart} />
+        <QuickActionButton
+          label="Pause"
+          disabled={!canPause}
+          onClick={() => setPausePickerOpen((v) => !v)}
+        />
+        <QuickActionButton label="Resume" disabled />
+        <QuickActionButton label="Complete job" disabled />
+        <QuickActionButton label="Log waste" disabled />
+        <QuickActionButton label="Note issue" disabled />
+        <QuickActionButton label="Mark PM done" disabled />
+      </div>
+      {pausePickerOpen && (
+        <div
+          data-section="pause-picker"
+          className="rounded-lg bg-white/5 ring-1 ring-white/10 px-4 py-3 flex flex-col gap-3"
+        >
+          <div className="floor-chip text-white/60">Why paused?</div>
+          <div className="flex flex-wrap gap-2">
+            {PAUSE_REASONS.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setPauseReason(r.key)}
+                className={`floor-chip rounded-full px-3 py-1 ring-1 transition-colors ${
+                  pauseReason === r.key
+                    ? 'bg-amber-500/30 text-amber-200 ring-amber-400/50'
+                    : 'bg-white/10 text-white/70 ring-white/15 hover:bg-white/15'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            value={pauseNote}
+            onChange={(e) => setPauseNote(e.target.value)}
+            placeholder="Note (optional)"
+            className="floor-body rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-2 outline-none focus:ring-white/30"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onConfirmPause}
+              className="floor-title rounded-lg bg-amber-500/30 ring-1 ring-amber-400/40 text-amber-100 px-4 py-2 hover:bg-amber-500/40 disabled:opacity-40"
+            >
+              Confirm pause
+            </button>
+            <button
+              type="button"
+              onClick={() => setPausePickerOpen(false)}
+              className="floor-chip rounded-md bg-white/10 ring-1 ring-white/15 px-3 py-1 hover:bg-white/15"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function QuickActionButton({

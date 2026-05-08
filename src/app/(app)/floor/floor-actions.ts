@@ -13,6 +13,23 @@ async function requireUserId() {
   return user.id;
 }
 
+export async function pauseJobAction(input: {
+  shiftSessionId: string;
+  stationId: string;
+  reason: string;
+  note?: string;
+}) {
+  const recordedBy = await requireUserId();
+  await recordEvent({
+    shiftSessionId: input.shiftSessionId,
+    stationId: input.stationId,
+    kind: 'job_paused',
+    payload: { reason: input.reason, note: input.note ?? null },
+    recordedBy,
+  });
+  revalidatePath('/floor');
+}
+
 export async function startJobAction(input: {
   shiftSessionId: string;
   stationId: string;

@@ -16,6 +16,48 @@ export type FloorEvent = {
   payload: Record<string, any>;
 };
 
+export type StationLiveStatus = 'running' | 'setup' | 'down' | 'idle';
+
+/**
+ * Derive a station's live status from its event history.
+ *
+ * - `job_started` / `job_resumed` → `running`
+ * - `job_paused` → `setup` (we don't yet have a 'paused' enum value;
+ *   operators in a paused state are typically performing setup/material work)
+ * - `job_completed` → `idle`
+ * - no events → `idle`
+ *
+ * Looks at the latest event for the given stationId by `occurredAt`.
+ */
+export function deriveStationStatus(
+  events: FloorEvent[],
+  stationId: string,
+): StationLiveStatus {
+  let latest: FloorEvent | null = null;
+  for (const e of events) {
+    if (e.stationId !== stationId) continue;
+    if (!latest) {
+      latest = e;
+      continue;
+    }
+    const ta = new Date(latest.occurredAt as unknown as string).getTime();
+    const tb = new Date(e.occurredAt as unknown as string).getTime();
+    if (tb > ta) latest = e;
+  }
+  if (!latest) return 'idle';
+  switch (latest.kind) {
+    case 'job_started':
+    case 'job_resumed':
+      return 'running';
+    case 'job_paused':
+      return 'setup';
+    case 'job_completed':
+      return 'idle';
+    default:
+      return 'idle';
+  }
+}
+
 export function groupEventsByStation(events: FloorEvent[]): Map<string, FloorEvent[]> {
   const out = new Map<string, FloorEvent[]>();
   for (const ev of events) {
