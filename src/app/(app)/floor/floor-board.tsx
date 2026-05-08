@@ -6,6 +6,7 @@ import type { ShiftEvent } from '@/server/floor-events';
 import type { TaskRow } from '@/server/floor-tasks';
 import type { PmStatusRow } from '@/server/floor-pm';
 import type { FloorStationView } from '@/lib/floor-types';
+import { TVHeader } from './components/tv-header';
 
 export type FloorBoardInitial = {
   now: string;
@@ -28,16 +29,40 @@ type Mode = 'huddle' | 'run';
 export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
   const [mode, setMode] = useState<Mode>('huddle');
 
-  // Reference unused state setter / initial so they aren't lint-flagged while
-  // the heavy panels (Tasks 23–30) are still stubbed.
-  void initial;
-  void mode;
-  void setMode;
+  const sessionStatus: 'live' | 'pre-shift' | 'handoff' =
+    initial.session && !initial.session.closedAt
+      ? 'live'
+      : initial.shift && !initial.session
+        ? 'pre-shift'
+        : 'handoff';
+
+  const counts = {
+    operators: initial.members.length,
+    pmsDue: initial.pmStatuses.filter((p) => p.level !== 'green').length,
+    openIssues: initial.events.filter((e) => e.kind === 'issue_noted').length,
+    tasksOpen: initial.tasks.filter(
+      (t) => t.status === 'open' || t.status === 'in_progress',
+    ).length,
+  };
+
+  const sessionOpenedAt = initial.session?.openedAt
+    ? new Date(initial.session.openedAt as unknown as string)
+    : null;
 
   return (
     <div data-floor-tv="true" className="min-h-[calc(100vh-3rem)] -m-6 p-4 flex flex-col gap-3">
-      {/* TODO Task 23 — TV header */}
-      <div className="floor-header opacity-50">[ TV header coming Task 23 ]</div>
+      <TVHeader
+        shift={initial.shift}
+        sessionStatus={sessionStatus}
+        mode={mode}
+        counts={counts}
+        sessionOpenedAt={sessionOpenedAt}
+        lastSyncAt={new Date()}
+        onModeChange={setMode}
+        onCounterClick={() => {
+          /* TODO Task 31 — scroll/highlight panel */
+        }}
+      />
 
       {/* Stations grid takes ~70% */}
       <div className="flex-[7] floor-body opacity-50">[ Stations grid coming Task 25 ]</div>
