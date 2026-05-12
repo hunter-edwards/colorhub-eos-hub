@@ -70,7 +70,14 @@ export type KnackRun = {
 
 // ── Knack API helpers ──────────────────────────────────────────────
 
-async function knackFetch(
+export function getKnackConfig(): KnackConfig | null {
+  const appId = process.env.KNACK_APP_ID;
+  const apiKey = process.env.KNACK_API_KEY;
+  if (!appId || !apiKey) return null;
+  return { appId, apiKey };
+}
+
+export async function knackFetch(
   config: KnackConfig,
   path: string,
   attempt = 0
@@ -95,7 +102,7 @@ async function knackFetch(
   return res.json();
 }
 
-function parseKnackDate(val: string | null | undefined): string | null {
+export function parseKnackDate(val: string | null | undefined): string | null {
   if (!val || !val.trim()) return null;
   // Knack dates come as "MM/DD/YYYY" or "MM/DD/YYYY H:MMam|pm" for datetime fields.
   // Take the date part; drop any trailing time.
