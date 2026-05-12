@@ -54,3 +54,23 @@ export function parseQtyRollup(input: string): QtyRollup {
     jobCount: numOrNull(jobs?.[1]),
   };
 }
+
+export function parseCustomerAndItem(input: string): {
+  customer: string | null;
+  itemName: string | null;
+} {
+  if (!input) return { customer: null, itemName: null };
+  const cleaned = input
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+  const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { customer: null, itemName: null };
+  const [customer, ...rest] = lines;
+  return {
+    customer: customer || null,
+    itemName: rest.length ? rest.join(' ') : null,
+  };
+}

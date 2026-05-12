@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapRoutingStepToStation, STATION_KEYS, parseQtyRollup } from './floor-knack-parse';
+import { mapRoutingStepToStation, STATION_KEYS, parseQtyRollup, parseCustomerAndItem } from './floor-knack-parse';
 
 describe('mapRoutingStepToStation', () => {
   it('maps PRINT - BRN and COAT ONLY PASS - BRN to press_1', () => {
@@ -88,5 +88,38 @@ describe('parseQtyRollup', () => {
     const input = '0 / 100 (+5%/-2%)';
     expect(parseQtyRollup(input).tolerancePlus).toBe(5);
     expect(parseQtyRollup(input).toleranceMinus).toBe(2);
+  });
+});
+
+describe('parseCustomerAndItem', () => {
+  it('parses standard rollup', () => {
+    const input = 'Shoreline Container<br /><br />100001732';
+    expect(parseCustomerAndItem(input)).toEqual({
+      customer: 'Shoreline Container',
+      itemName: '100001732',
+    });
+  });
+  it('joins multi-line item', () => {
+    const input = 'Acme Corp<br /><br />Part A<br />Part B';
+    expect(parseCustomerAndItem(input)).toEqual({
+      customer: 'Acme Corp',
+      itemName: 'Part A Part B',
+    });
+  });
+  it('returns nulls for empty input', () => {
+    expect(parseCustomerAndItem('')).toEqual({ customer: null, itemName: null });
+  });
+  it('single line yields customer only', () => {
+    expect(parseCustomerAndItem('Solo Customer')).toEqual({
+      customer: 'Solo Customer',
+      itemName: null,
+    });
+  });
+  it('strips HTML entities and trims', () => {
+    const input = '  Customer &amp; Co<br /><br />   Item Name   ';
+    expect(parseCustomerAndItem(input)).toEqual({
+      customer: 'Customer & Co',
+      itemName: 'Item Name',
+    });
   });
 });
