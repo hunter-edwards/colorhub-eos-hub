@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapRoutingStepToStation, STATION_KEYS } from './floor-knack-parse';
+import { mapRoutingStepToStation, STATION_KEYS, parseQtyRollup } from './floor-knack-parse';
 
 describe('mapRoutingStepToStation', () => {
   it('maps PRINT - BRN and COAT ONLY PASS - BRN to press_1', () => {
@@ -46,5 +46,47 @@ describe('STATION_KEYS', () => {
       'press_1', 'press_2', 'cad', 'rotary',
       'gluer_tape', 'handwork', 'shipping',
     ]);
+  });
+});
+
+describe('parseQtyRollup', () => {
+  it('parses full rollup with all fields', () => {
+    const input = '4820 / 5000 (+10%/-0%)\nRcvd = 4500\n#Jobs = 3';
+    expect(parseQtyRollup(input)).toEqual({
+      produced: 4820, needed: 5000, tolerancePlus: 10, toleranceMinus: 0,
+      received: 4500, jobCount: 3,
+    });
+  });
+  it('handles HTML <br /> separators', () => {
+    const input = '0 / <br />(+10%/-0%)<br /><br />Rcvd = 0<br />#Jobs = 0';
+    expect(parseQtyRollup(input)).toEqual({
+      produced: 0, needed: null, tolerancePlus: 10, toleranceMinus: 0,
+      received: 0, jobCount: 0,
+    });
+  });
+  it('handles comma-formatted numbers', () => {
+    const input = '12,400 / 50,000\nRcvd = 25,000\n#Jobs = 1';
+    expect(parseQtyRollup(input).produced).toBe(12400);
+    expect(parseQtyRollup(input).needed).toBe(50000);
+    expect(parseQtyRollup(input).received).toBe(25000);
+  });
+  it('returns nulls for empty input', () => {
+    expect(parseQtyRollup('')).toEqual({
+      produced: null, needed: null, tolerancePlus: null,
+      toleranceMinus: null, received: null, jobCount: null,
+    });
+  });
+  it('handles sparse input (no Rcvd line)', () => {
+    const input = '0 / 5000';
+    const r = parseQtyRollup(input);
+    expect(r.produced).toBe(0);
+    expect(r.needed).toBe(5000);
+    expect(r.received).toBeNull();
+    expect(r.jobCount).toBeNull();
+  });
+  it('parses tolerance values', () => {
+    const input = '0 / 100 (+5%/-2%)';
+    expect(parseQtyRollup(input).tolerancePlus).toBe(5);
+    expect(parseQtyRollup(input).toleranceMinus).toBe(2);
   });
 });
