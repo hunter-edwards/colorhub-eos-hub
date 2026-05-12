@@ -74,3 +74,15 @@ export function parseCustomerAndItem(input: string): {
     itemName: rest.length ? rest.join(' ') : null,
   };
 }
+
+export function yesNoToBool(v: string | null | undefined): boolean {
+  if (!v) return false;
+  return v.trim().toLowerCase() === 'yes';
+}
+
+export function parseKnackInt(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, ''));
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}

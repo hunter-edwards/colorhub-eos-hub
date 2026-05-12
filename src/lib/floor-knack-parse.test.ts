@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapRoutingStepToStation, STATION_KEYS, parseQtyRollup, parseCustomerAndItem } from './floor-knack-parse';
+import { mapRoutingStepToStation, STATION_KEYS, parseQtyRollup, parseCustomerAndItem, yesNoToBool, parseKnackInt } from './floor-knack-parse';
 
 describe('mapRoutingStepToStation', () => {
   it('maps PRINT - BRN and COAT ONLY PASS - BRN to press_1', () => {
@@ -121,5 +121,36 @@ describe('parseCustomerAndItem', () => {
       customer: 'Customer & Co',
       itemName: 'Item Name',
     });
+  });
+});
+
+describe('yesNoToBool', () => {
+  it('treats Yes (any case) as true', () => {
+    expect(yesNoToBool('Yes')).toBe(true);
+    expect(yesNoToBool('yes')).toBe(true);
+    expect(yesNoToBool('YES')).toBe(true);
+  });
+  it('treats No and falsy as false', () => {
+    expect(yesNoToBool('No')).toBe(false);
+    expect(yesNoToBool('')).toBe(false);
+    expect(yesNoToBool(null)).toBe(false);
+    expect(yesNoToBool(undefined)).toBe(false);
+  });
+});
+
+describe('parseKnackInt', () => {
+  it('parses numbers', () => {
+    expect(parseKnackInt(20)).toBe(20);
+    expect(parseKnackInt(0)).toBe(0);
+  });
+  it('parses Knack number strings', () => {
+    expect(parseKnackInt('20.0')).toBe(20);
+    expect(parseKnackInt('1,500')).toBe(1500);
+  });
+  it('returns null for empty / invalid', () => {
+    expect(parseKnackInt('')).toBeNull();
+    expect(parseKnackInt(null)).toBeNull();
+    expect(parseKnackInt(undefined)).toBeNull();
+    expect(parseKnackInt('abc')).toBeNull();
   });
 });
