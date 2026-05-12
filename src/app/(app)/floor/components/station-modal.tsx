@@ -131,9 +131,6 @@ export function StationModal(props: StationModalProps) {
   const sheetsProg = current
     ? progress({ completed: current.sheetsCompleted, needed: current.sheetsNeeded })
     : null;
-  const receivedProg = current
-    ? progress({ completed: current.sheetsReceived, needed: current.sheetsNeeded })
-    : null;
 
   // Derive live status from events so the pill reflects the latest action
   // (Pause/Resume/Complete) before the next snapshot poll lands.
@@ -215,20 +212,29 @@ export function StationModal(props: StationModalProps) {
                     Waste: <span className="tabular-nums">{formatNum(current.wasteSheets)}</span>
                   </div>
                 </div>
-                {receivedProg && (
-                  <div className="mt-2">
-                    <div className="floor-chip text-white/60 mb-1">Received vs needed</div>
-                    <div className="h-3 w-full rounded-full bg-white/5 overflow-hidden">
+                {typeof current.sheetsReceived === 'number' && current.sheetsNeeded > 0 && (() => {
+                  const isShort = current.sheetsReceived < current.sheetsNeeded;
+                  const pct = Math.min(100, (current.sheetsReceived / current.sheetsNeeded) * 100);
+                  return (
+                    <div className="mt-2">
+                      <div className="floor-chip text-white/60 mb-1">Received</div>
+                      <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
+                        <div
+                          className={`h-full ${isShort ? 'bg-amber-500/70' : 'bg-neutral-400/70'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                       <div
-                        className="h-full bg-sky-400"
-                        style={{ width: `${Math.min(100, receivedProg.pct)}%` }}
-                      />
+                        className={`floor-chip tabular-nums mt-1 ${
+                          isShort ? 'text-amber-300' : 'text-white/60'
+                        }`}
+                      >
+                        {formatNum(current.sheetsReceived)} / {formatNum(current.sheetsNeeded)}
+                        {isShort && ' — material short'}
+                      </div>
                     </div>
-                    <div className="floor-chip tabular-nums text-white/60 mt-1">
-                      {formatNum(receivedProg.completed)} / {formatNum(receivedProg.needed)}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             ) : (
               <div className="floor-title text-white/40">No current job</div>
