@@ -46,10 +46,36 @@ export async function getFloorSnapshot(
   ]);
 
   const stationIds = stations.map((s) => s.id);
-  const [pmStatuses, floorView] = await Promise.all([
+  // getFloorView queries the Knack snapshot table by stationKey (the
+  // value carried in `stations.knackMachineCenterId`), not by hub UUID.
+  // Build the deduped list of stationKeys, fetch views, then re-key each
+  // view back to the hub station.id so downstream consumers (which key
+  // on station.id) get the right shape — same pattern as page.tsx.
+  const stationKeys = Array.from(
+    new Set(
+      stations
+        .map((s) => s.knackMachineCenterId)
+        .filter((k): k is string => !!k),
+    ),
+  );
+  const [pmStatuses, floorViewsByKey] = await Promise.all([
     listPmStatuses(stationIds, new Date()),
-    getFloorView(stationIds),
+    getFloorView(stationKeys),
   ]);
+  const viewByKey = new Map(floorViewsByKey.map((v) => [v.stationId, v]));
+  const floorView = stations.map((s) => {
+    const key = s.knackMachineCenterId;
+    const v = key ? viewByKey.get(key) : undefined;
+    if (!v) {
+      return {
+        stationId: s.id,
+        status: 'idle' as const,
+        current: null,
+        queue: [],
+      };
+    }
+    return { ...v, stationId: s.id };
+  });
 
   return {
     polledAt: new Date().toISOString(),
