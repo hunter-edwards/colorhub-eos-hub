@@ -122,6 +122,16 @@ export default async function FloorPage() {
     return { ...v, stationId: s.id };
   });
 
+  const floorSync = lastSync
+    ? {
+        syncedAt: new Date(lastSync.syncedAt).toISOString(),
+        status: (lastSync.status === 'ok' || lastSync.status === 'error'
+          ? (lastSync.status as 'ok' | 'error')
+          : null),
+        errorMessage: lastSync.errorMessage,
+      }
+    : null;
+
   return (
     <FloorBoard
       initial={{
@@ -138,6 +148,7 @@ export default async function FloorPage() {
         defaultOperatorsByStation: Object.fromEntries(defaultOperators.entries()),
         previousHandoffNotes: prevSession?.handoffNotes ?? null,
         previousSessionId: prevSession?.id ?? null,
+        floorSync,
       }}
     />
   );
