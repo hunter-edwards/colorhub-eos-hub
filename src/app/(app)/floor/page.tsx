@@ -45,6 +45,13 @@ export default async function FloorPage() {
 
   const stations = await listStations();
   const stationIds = stations.map((s) => s.id);
+  const stationKeys = Array.from(
+    new Set(
+      stations
+        .map((s) => s.knackMachineCenterId)
+        .filter((k): k is string => !!k),
+    ),
+  );
 
   if (stations.length === 0) {
     return (
@@ -69,7 +76,7 @@ export default async function FloorPage() {
     events,
     pmStatuses,
     tasks,
-    floorView,
+    floorViewsRaw,
     members,
     defaultOperators,
     prevSession,
@@ -78,7 +85,7 @@ export default async function FloorPage() {
     session ? listEventsForShift(session.id, { limit: 200 }) : Promise.resolve([]),
     listPmStatuses(stationIds, now),
     listTasks({ statuses: ['open', 'in_progress'] }),
-    getFloorView(stationIds),
+    getFloorView(stationKeys),
     listTeamMembers(),
     listDefaultOperators(stationIds),
     // previous shift session (for handoff banner)
@@ -97,6 +104,23 @@ export default async function FloorPage() {
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ]);
+
+  // Map each station (by id) to its view by stationKey. Stations sharing a
+  // stationKey (e.g. CAD 1 + CAD 2) get the same view object. Re-key the
+  // view object's stationId back to the hub station.id so downstream
+  // components (which key on station.id) keep working unchanged.
+  const viewByKey = new Map(floorViewsRaw.map((v) => [v.stationId, v]));
+  const floorView = stations.map((s) => {
+    const key = s.knackMachineCenterId;
+    if (!key) {
+      return { stationId: s.id, status: 'idle' as const, current: null, queue: [] };
+    }
+    const v = viewByKey.get(key);
+    if (!v) {
+      return { stationId: s.id, status: 'idle' as const, current: null, queue: [] };
+    }
+    return { ...v, stationId: s.id };
+  });
 
   return (
     <FloorBoard

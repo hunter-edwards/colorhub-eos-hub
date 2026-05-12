@@ -267,7 +267,7 @@ export const stations = pgTable('stations', {
   knackMachineCenterId: text('knack_machine_center_id'),
   archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (t) => [unique().on(t.teamId, t.knackMachineCenterId)]);
+});
 
 export const stationDefaultOperators = pgTable('station_default_operators', {
   id: uuid('id').primaryKey().defaultRandom(),

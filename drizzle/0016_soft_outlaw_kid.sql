@@ -1,0 +1,1 @@
+ALTER TABLE "stations" DROP CONSTRAINT "stations_team_id_knack_machine_center_id_unique";

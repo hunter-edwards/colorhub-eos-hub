@@ -158,17 +158,18 @@ export async function setDefaultOperators(
 const DEFAULT_STATIONS: Array<{
   name: string;
   kind: StationKind;
+  knackMachineCenterId: string;
   groupLabel: string;
   displayOrder: number;
 }> = [
-  { name: 'Press 1', kind: 'printer', groupLabel: 'Printing', displayOrder: 1 },
-  { name: 'Press 2', kind: 'printer', groupLabel: 'Printing', displayOrder: 2 },
-  { name: 'CAD 1', kind: 'cad', groupLabel: 'Cutting', displayOrder: 3 },
-  { name: 'CAD 2', kind: 'cad', groupLabel: 'Cutting', displayOrder: 4 },
-  { name: 'Rotary', kind: 'rotary', groupLabel: 'Cutting', displayOrder: 5 },
-  { name: 'Gluer/Tape', kind: 'gluer', groupLabel: 'Finishing', displayOrder: 6 },
-  { name: 'Handwork', kind: 'handwork', groupLabel: 'Finishing', displayOrder: 7 },
-  { name: 'Shipping', kind: 'shipping', groupLabel: 'Shipping', displayOrder: 8 },
+  { name: 'Press 1',    kind: 'printer',  knackMachineCenterId: 'press_1',    groupLabel: 'Printing',  displayOrder: 1 },
+  { name: 'Press 2',    kind: 'printer',  knackMachineCenterId: 'press_2',    groupLabel: 'Printing',  displayOrder: 2 },
+  { name: 'CAD 1',      kind: 'cad',      knackMachineCenterId: 'cad',        groupLabel: 'Cutting',   displayOrder: 3 },
+  { name: 'CAD 2',      kind: 'cad',      knackMachineCenterId: 'cad',        groupLabel: 'Cutting',   displayOrder: 4 },
+  { name: 'Rotary',     kind: 'rotary',   knackMachineCenterId: 'rotary',     groupLabel: 'Cutting',   displayOrder: 5 },
+  { name: 'Gluer/Tape', kind: 'gluer',    knackMachineCenterId: 'gluer_tape', groupLabel: 'Finishing', displayOrder: 6 },
+  { name: 'Handwork',   kind: 'handwork', knackMachineCenterId: 'handwork',   groupLabel: 'Finishing', displayOrder: 7 },
+  { name: 'Shipping',   kind: 'shipping', knackMachineCenterId: 'shipping',   groupLabel: 'Shipping',  displayOrder: 8 },
 ];
 
 export async function seedDefaultStations(teamId: string): Promise<{ created: number }> {
@@ -187,6 +188,7 @@ export async function seedDefaultStations(teamId: string): Promise<{ created: nu
       teamId,
       name: def.name,
       kind: def.kind,
+      knackMachineCenterId: def.knackMachineCenterId,
       groupLabel: def.groupLabel,
       displayOrder: def.displayOrder,
     });
