@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 
 type Mode = 'huddle' | 'run';
 type Panel = 'people' | 'pm' | 'issues' | 'tasks';
 type SessionStatus = 'live' | 'pre-shift' | 'handoff';
+
+export type FloorSyncStatus = {
+  syncedAt: Date | null;
+  status: 'ok' | 'error' | null;
+  errorMessage?: string | null;
+};
 
 type Props = {
   shift: { shiftNumber: 1 | 2; date: string } | null;
@@ -13,7 +20,10 @@ type Props = {
   counts: { operators: number; pmsDue: number; openIssues: number; tasksOpen: number };
   /** Time the shift session was opened — used to render the live elapsed timer. */
   sessionOpenedAt?: Date | null;
+  /** Last hub-poll time — retained for back-compat but not visually emphasized. */
   lastSyncAt: Date | null;
+  /** Last Knack floor_routings sync — drives the sync status dot. */
+  floorSync: FloorSyncStatus | null;
   onModeChange: (m: Mode) => void;
   onCounterClick: (panel: Panel) => void;
 };
@@ -80,6 +90,25 @@ function statusLabel(status: SessionStatus): string {
   }
 }
 
+function syncDotColor(floorSync: FloorSyncStatus | null, nowMs: number): 'green' | 'amber' | 'red' {
+  const ageMs = floorSync?.syncedAt ? nowMs - floorSync.syncedAt.getTime() : Infinity;
+  if (floorSync?.status === 'error' || ageMs > 5 * 60 * 1000) return 'red';
+  if (ageMs > 90 * 1000) return 'amber';
+  return 'green';
+}
+
+function syncDotClass(color: 'green' | 'amber' | 'red'): string {
+  switch (color) {
+    case 'red':
+      return 'bg-red-400';
+    case 'amber':
+      return 'bg-amber-400';
+    case 'green':
+    default:
+      return 'bg-emerald-400';
+  }
+}
+
 export function TVHeader(props: Props) {
   const {
     shift,
@@ -87,7 +116,7 @@ export function TVHeader(props: Props) {
     mode,
     counts,
     sessionOpenedAt,
-    lastSyncAt,
+    floorSync,
     onModeChange,
     onCounterClick,
   } = props;
@@ -180,16 +209,38 @@ export function TVHeader(props: Props) {
             </span>
           </button>
         ))}
-        <div className="flex items-center gap-2 ml-2 text-xs text-white/60">
-          <span
-            aria-hidden="true"
-            className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400"
-          />
-          <span>
-            Last sync {lastSyncAt ? 'just now' : 'never'}
-          </span>
-        </div>
+        <SyncDot floorSync={floorSync} now={now} />
       </div>
     </header>
+  );
+}
+
+function SyncDot({
+  floorSync,
+  now,
+}: {
+  floorSync: FloorSyncStatus | null;
+  now: Date;
+}) {
+  const color = syncDotColor(floorSync, now.getTime());
+  const dotClass = syncDotClass(color);
+  const ageLabel = floorSync?.syncedAt
+    ? `${formatDistanceToNow(floorSync.syncedAt)} ago`
+    : 'never';
+  const label = `Last sync · ${ageLabel}`;
+  const tooltip =
+    floorSync?.status === 'error' && floorSync.errorMessage
+      ? `${label} — error: ${floorSync.errorMessage}`
+      : label;
+  return (
+    <div
+      className="flex items-center gap-2 ml-2 text-xs text-white/60"
+      title={tooltip}
+      aria-label={tooltip}
+      data-sync-status={color}
+    >
+      <span aria-hidden="true" className={`inline-block w-2.5 h-2.5 rounded-full ${dotClass}`} />
+      <span>{label}</span>
+    </div>
   );
 }

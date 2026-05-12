@@ -70,9 +70,17 @@ export type KnackRun = {
 
 // ── Knack API helpers ──────────────────────────────────────────────
 
-async function knackFetch(
+export function getKnackConfig(): KnackConfig | null {
+  const appId = process.env.KNACK_APP_ID;
+  const apiKey = process.env.KNACK_API_KEY;
+  if (!appId || !apiKey) return null;
+  return { appId, apiKey };
+}
+
+export async function knackFetch(
   config: KnackConfig,
-  path: string
+  path: string,
+  attempt = 0
 ): Promise<unknown> {
   const res = await fetch(`${KNACK_BASE}${path}`, {
     headers: {
@@ -81,13 +89,20 @@ async function knackFetch(
       'Content-Type': 'application/json',
     },
   });
+  // Single retry on rate-limit. Respect Retry-After header if present.
+  if (res.status === 429 && attempt < 1) {
+    const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+    const waitMs = Number.isFinite(ra) ? ra * 1000 : 500;
+    await new Promise((r) => setTimeout(r, waitMs));
+    return knackFetch(config, path, attempt + 1);
+  }
   if (!res.ok) {
     throw new Error(`Knack API ${res.status}: ${await res.text()}`);
   }
   return res.json();
 }
 
-function parseKnackDate(val: string | null | undefined): string | null {
+export function parseKnackDate(val: string | null | undefined): string | null {
   if (!val || !val.trim()) return null;
   // Knack dates come as "MM/DD/YYYY" or "MM/DD/YYYY H:MMam|pm" for datetime fields.
   // Take the date part; drop any trailing time.

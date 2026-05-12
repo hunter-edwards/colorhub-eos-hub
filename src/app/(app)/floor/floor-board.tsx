@@ -86,6 +86,11 @@ export type FloorBoardInitial = {
   defaultOperatorsByStation: Record<string, string[]>;
   previousHandoffNotes: string | null;
   previousSessionId: string | null;
+  floorSync: {
+    syncedAt: string | null;
+    status: 'ok' | 'error' | null;
+    errorMessage: string | null;
+  } | null;
 };
 
 type Mode = 'huddle' | 'run';
@@ -309,6 +314,17 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
         counts={counts}
         sessionOpenedAt={sessionOpenedAt}
         lastSyncAt={lastSyncAt}
+        floorSync={
+          initial.floorSync
+            ? {
+                syncedAt: initial.floorSync.syncedAt
+                  ? new Date(initial.floorSync.syncedAt)
+                  : null,
+                status: initial.floorSync.status,
+                errorMessage: initial.floorSync.errorMessage,
+              }
+            : null
+        }
         onModeChange={setMode}
         onCounterClick={() => {
           /* TODO Task 31 — scroll/highlight panel */
@@ -329,6 +345,14 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {initial.floorSync === null && (
+        <div className="flex justify-center">
+          <div className="rounded-full bg-white/5 ring-1 ring-white/10 px-4 py-1.5 floor-chip text-white/70 animate-pulse">
+            Awaiting first sync from Knack…
+          </div>
         </div>
       )}
 

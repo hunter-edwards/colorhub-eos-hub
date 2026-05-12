@@ -12,7 +12,7 @@ import {
   fetchRunsByIds,
   computeWeeklyKPIs,
   computeInvoiceKPIs,
-  type KnackConfig,
+  getKnackConfig,
 } from '@/lib/knack';
 import { getWeekStarts } from '@/lib/scorecard-utils';
 
@@ -21,13 +21,6 @@ async function requireUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
   return user;
-}
-
-function getKnackConfig(): KnackConfig | null {
-  const appId = process.env.KNACK_APP_ID;
-  const apiKey = process.env.KNACK_API_KEY;
-  if (!appId || !apiKey) return null;
-  return { appId, apiKey };
 }
 
 /** Map of KPI name → scorecard metric name (must match what's in the DB). */

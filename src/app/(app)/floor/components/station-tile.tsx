@@ -15,8 +15,28 @@ type Props = {
   view: FloorStationView;
   operators: string[];
   pm: PmInfo | null;
+  /** True when 2+ visible stations share this station's knackMachineCenterId. */
+  isSharedQueue?: boolean;
   onExpand: (stationId: string) => void;
 };
+
+const STATION_KEY_LABELS: Record<string, string> = {
+  press_1: 'Press 1',
+  press_2: 'Press 2',
+  cad: 'CAD',
+  rotary: 'Rotary',
+  gluer_tape: 'Gluer/Tape',
+  handwork: 'Handwork',
+  shipping: 'Shipping',
+};
+
+function humanizeStationKey(key: string): string {
+  if (STATION_KEY_LABELS[key]) return STATION_KEY_LABELS[key];
+  return key
+    .split('_')
+    .map((p) => (p.length === 0 ? p : p[0].toUpperCase() + p.slice(1)))
+    .join(' ');
+}
 
 function statusPillClasses(status: FloorStationView['status']): string {
   switch (status) {
@@ -59,7 +79,14 @@ function formatNum(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-export function StationTile({ station, view, operators, pm, onExpand }: Props) {
+export function StationTile({
+  station,
+  view,
+  operators,
+  pm,
+  isSharedQueue,
+  onExpand,
+}: Props) {
   const current = view.current;
   const next = view.queue[0] ?? null;
   const progressInfo = current
@@ -68,6 +95,13 @@ export function StationTile({ station, view, operators, pm, onExpand }: Props) {
 
   const idleLabel =
     view.status === 'down' ? 'Down' : view.status === 'setup' ? 'Setup' : 'No job';
+
+  const sharedSubtitle =
+    isSharedQueue && station.knackMachineCenterId
+      ? `${humanizeStationKey(station.knackMachineCenterId)} queue · ${
+          (current ? 1 : 0) + view.queue.length
+        } jobs`
+      : null;
 
   return (
     <button
@@ -78,7 +112,12 @@ export function StationTile({ station, view, operators, pm, onExpand }: Props) {
     >
       {/* Header row: name + status pill */}
       <div className="flex items-start justify-between gap-2">
-        <div className="floor-title truncate min-w-0">{station.name}</div>
+        <div className="flex flex-col min-w-0">
+          <div className="floor-title truncate">{station.name}</div>
+          {sharedSubtitle && (
+            <div className="floor-chip text-white/50 truncate">{sharedSubtitle}</div>
+          )}
+        </div>
         <span
           className={`floor-chip px-2 py-0.5 rounded-full font-semibold whitespace-nowrap ${statusPillClasses(view.status)}`}
         >

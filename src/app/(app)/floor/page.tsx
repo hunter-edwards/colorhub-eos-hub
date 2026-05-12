@@ -14,6 +14,7 @@ import { listEventsForShift } from '@/server/floor-events';
 import { listPmStatuses } from '@/server/floor-pm';
 import { listTasks } from '@/server/floor-tasks';
 import { getFloorView } from '@/server/floor-knack';
+import { syncFloorRoutings, getLastFloorSync } from '@/server/floor-knack-sync';
 import { listTeamMembers } from '@/server/rocks';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -32,8 +33,25 @@ export default async function FloorPage() {
   if (!user) redirect('/login');
 
   const teamId = await getCurrentTeamId();
+
+  // Fire-and-forget sync if last one was >30s ago. Don't block render.
+  const lastSync = await getLastFloorSync();
+  const ageMs = lastSync ? Date.now() - new Date(lastSync.syncedAt).getTime() : Infinity;
+  if (ageMs > 30_000) {
+    // No await — render the current snapshot now; sync runs in background.
+    // Swallow errors so a Knack outage doesn't break the page.
+    void syncFloorRoutings().catch(() => {});
+  }
+
   const stations = await listStations();
   const stationIds = stations.map((s) => s.id);
+  const stationKeys = Array.from(
+    new Set(
+      stations
+        .map((s) => s.knackMachineCenterId)
+        .filter((k): k is string => !!k),
+    ),
+  );
 
   if (stations.length === 0) {
     return (
@@ -58,7 +76,7 @@ export default async function FloorPage() {
     events,
     pmStatuses,
     tasks,
-    floorView,
+    floorViewsRaw,
     members,
     defaultOperators,
     prevSession,
@@ -67,7 +85,7 @@ export default async function FloorPage() {
     session ? listEventsForShift(session.id, { limit: 200 }) : Promise.resolve([]),
     listPmStatuses(stationIds, now),
     listTasks({ statuses: ['open', 'in_progress'] }),
-    getFloorView(stationIds),
+    getFloorView(stationKeys),
     listTeamMembers(),
     listDefaultOperators(stationIds),
     // previous shift session (for handoff banner)
@@ -87,6 +105,33 @@ export default async function FloorPage() {
       : Promise.resolve(null),
   ]);
 
+  // Map each station (by id) to its view by stationKey. Stations sharing a
+  // stationKey (e.g. CAD 1 + CAD 2) get the same view object. Re-key the
+  // view object's stationId back to the hub station.id so downstream
+  // components (which key on station.id) keep working unchanged.
+  const viewByKey = new Map(floorViewsRaw.map((v) => [v.stationId, v]));
+  const floorView = stations.map((s) => {
+    const key = s.knackMachineCenterId;
+    if (!key) {
+      return { stationId: s.id, status: 'idle' as const, current: null, queue: [] };
+    }
+    const v = viewByKey.get(key);
+    if (!v) {
+      return { stationId: s.id, status: 'idle' as const, current: null, queue: [] };
+    }
+    return { ...v, stationId: s.id };
+  });
+
+  const floorSync = lastSync
+    ? {
+        syncedAt: new Date(lastSync.syncedAt).toISOString(),
+        status: (lastSync.status === 'ok' || lastSync.status === 'error'
+          ? (lastSync.status as 'ok' | 'error')
+          : null),
+        errorMessage: lastSync.errorMessage,
+      }
+    : null;
+
   return (
     <FloorBoard
       initial={{
@@ -103,6 +148,7 @@ export default async function FloorPage() {
         defaultOperatorsByStation: Object.fromEntries(defaultOperators.entries()),
         previousHandoffNotes: prevSession?.handoffNotes ?? null,
         previousSessionId: prevSession?.id ?? null,
+        floorSync,
       }}
     />
   );

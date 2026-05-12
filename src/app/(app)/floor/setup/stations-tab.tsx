@@ -1,7 +1,9 @@
 import { listStations, listDefaultOperators } from '@/server/floor-stations';
 import { listForStations } from '@/server/floor-pm-schedules';
 import { listTeamMembers } from '@/server/rocks';
+import { getLastFloorSync } from '@/server/floor-knack-sync';
 import { StationsTable, type StationRow, type Member, type PmScheduleRow } from './stations-table';
+import { SyncNowPanel } from './sync-now-panel';
 
 export async function StationsTab() {
   const stations = await listStations({ includeArchived: true });
@@ -9,6 +11,7 @@ export async function StationsTab() {
   const defaults = await listDefaultOperators(stationIds);
   const members = await listTeamMembers();
   const pmByStation = await listForStations(stationIds);
+  const lastSync = await getLastFloorSync();
 
   const memberRows: Member[] = members.map((m) => ({
     id: m.id,
@@ -37,5 +40,22 @@ export async function StationsTab() {
     };
   });
 
-  return <StationsTable stations={rows} members={memberRows} />;
+  return (
+    <div className="space-y-4">
+      <SyncNowPanel
+        lastSync={
+          lastSync
+            ? {
+                syncedAt: lastSync.syncedAt.toISOString(),
+                status: lastSync.status as 'ok' | 'error',
+                errorMessage: lastSync.errorMessage,
+                inserted: lastSync.inserted,
+                hiddenSkipped: lastSync.hiddenSkipped,
+              }
+            : null
+        }
+      />
+      <StationsTable stations={rows} members={memberRows} />
+    </div>
+  );
 }
