@@ -72,7 +72,8 @@ export type KnackRun = {
 
 async function knackFetch(
   config: KnackConfig,
-  path: string
+  path: string,
+  attempt = 0
 ): Promise<unknown> {
   const res = await fetch(`${KNACK_BASE}${path}`, {
     headers: {
@@ -81,6 +82,13 @@ async function knackFetch(
       'Content-Type': 'application/json',
     },
   });
+  // Single retry on rate-limit. Respect Retry-After header if present.
+  if (res.status === 429 && attempt < 1) {
+    const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+    const waitMs = Number.isFinite(ra) ? ra * 1000 : 500;
+    await new Promise((r) => setTimeout(r, waitMs));
+    return knackFetch(config, path, attempt + 1);
+  }
   if (!res.ok) {
     throw new Error(`Knack API ${res.status}: ${await res.text()}`);
   }
