@@ -14,6 +14,7 @@ import { listEventsForShift } from '@/server/floor-events';
 import { listPmStatuses } from '@/server/floor-pm';
 import { listTasks } from '@/server/floor-tasks';
 import { getFloorView } from '@/server/floor-knack';
+import { syncFloorRoutings, getLastFloorSync } from '@/server/floor-knack-sync';
 import { listTeamMembers } from '@/server/rocks';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -32,6 +33,16 @@ export default async function FloorPage() {
   if (!user) redirect('/login');
 
   const teamId = await getCurrentTeamId();
+
+  // Fire-and-forget sync if last one was >30s ago. Don't block render.
+  const lastSync = await getLastFloorSync();
+  const ageMs = lastSync ? Date.now() - new Date(lastSync.syncedAt).getTime() : Infinity;
+  if (ageMs > 30_000) {
+    // No await — render the current snapshot now; sync runs in background.
+    // Swallow errors so a Knack outage doesn't break the page.
+    void syncFloorRoutings().catch(() => {});
+  }
+
   const stations = await listStations();
   const stationIds = stations.map((s) => s.id);
 
