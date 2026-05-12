@@ -10,9 +10,13 @@
 //     client at `beforeAll`; copy that pattern when you're ready to enable
 //     this test (add NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to
 //     env, then call `adminClient.auth.admin.createUser`).
-//   - Knack data (or the Phase 1 mock at `src/server/floor-knack.ts`) so the
-//     "Now running" panel has a current job for Press 1 — without a current
-//     job the Start/Pause/Resume/Complete buttons are disabled.
+//   - Seed rows in `knack_routings_snapshot` for the stations under test.
+//     Use the helper at `tests/e2e/helpers/seed-floor-snapshot.ts`:
+//       import { seedFloorSnapshot, clearFloorSnapshot } from './helpers/seed-floor-snapshot';
+//       await clearFloorSnapshot();
+//       await seedFloorSnapshot([{ stationKey: 'press_1', jobNumber: 'J-1' }]);
+//     Without seeded rows, tiles render as IDLE and Start/Pause/Resume/Complete
+//     are disabled.
 //
 // To enable: remove `test.describe.skip(` (use `.describe(`) and replace the
 // auth stub in `beforeEach` with the same `signIn` helper used in
