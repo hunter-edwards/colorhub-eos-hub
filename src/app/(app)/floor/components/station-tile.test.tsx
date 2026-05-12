@@ -87,4 +87,45 @@ describe('StationTile', () => {
     fireEvent.click(screen.getByRole('button', { name: /Press 1/i }));
     expect(onExpand).toHaveBeenCalledWith('s1');
   });
+
+  it('shows shared-queue subtitle when isSharedQueue is true', () => {
+    const cadStation = { ...baseStation, name: 'CAD 1', knackMachineCenterId: 'cad' };
+    const cadView = {
+      ...runningView,
+      queue: [
+        { ...runningView.current!, id: 'q1', jobNumber: 'J-2' },
+        { ...runningView.current!, id: 'q2', jobNumber: 'J-3' },
+      ],
+    };
+    render(
+      <div data-floor-tv="true">
+        <StationTile
+          station={cadStation}
+          view={cadView}
+          operators={[]}
+          pm={null}
+          isSharedQueue
+          onExpand={() => {}}
+        />
+      </div>
+    );
+    // current (1) + queue (2) = 3 jobs total
+    expect(screen.getByText(/CAD queue · 3 jobs/)).toBeInTheDocument();
+  });
+
+  it('does not show shared-queue subtitle when isSharedQueue is false', () => {
+    render(
+      <div data-floor-tv="true">
+        <StationTile
+          station={{ ...baseStation, knackMachineCenterId: 'press_1' }}
+          view={runningView}
+          operators={[]}
+          pm={null}
+          isSharedQueue={false}
+          onExpand={() => {}}
+        />
+      </div>
+    );
+    expect(screen.queryByText(/queue ·/)).not.toBeInTheDocument();
+  });
 });
