@@ -348,6 +348,14 @@ export function FloorBoard({ initial }: { initial: FloorBoardInitial }) {
         </div>
       )}
 
+      {initial.floorSync === null && (
+        <div className="flex justify-center">
+          <div className="rounded-full bg-white/5 ring-1 ring-white/10 px-4 py-1.5 floor-chip text-white/70 animate-pulse">
+            Awaiting first sync from Knack…
+          </div>
+        </div>
+      )}
+
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         {/* Stations grid takes ~70% */}
         <div className="floor-grid-row flex-[7] min-h-0">
