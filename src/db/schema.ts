@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, numeric, date, boolean, pgEnum, jsonb, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, numeric, date, boolean, pgEnum, jsonb, unique, index } from 'drizzle-orm/pg-core';
 
 // Single team for now; team_id reserved for future multi-tenant.
 export const teams = pgTable('teams', {
@@ -335,4 +335,48 @@ export const taskPool = pgTable('task_pool', {
   assignedUserId: uuid('assigned_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   completedAt: timestamp('completed_at'),
+});
+
+// ----- FLOOR PHASE 2: Knack snapshot -----
+
+export const knackRoutingsSnapshot = pgTable('knack_routings_snapshot', {
+  knackRecordId: text('knack_record_id').primaryKey(),
+  knackRunId: text('knack_run_id'),
+  jobNumber: text('job_number'),
+  customer: text('customer'),
+  itemName: text('item_name'),
+  routingStep: text('routing_step').notNull(),
+  stationKey: text('station_key').notNull(),
+  complete: boolean('complete').notNull(),
+  artReady: boolean('art_ready').notNull(),
+  materialReady: boolean('material_ready').notNull(),
+  routingIsReady: boolean('routing_is_ready').notNull(),
+  productionPriority: integer('production_priority'),
+  highPriority: boolean('high_priority').notNull().default(false),
+  sheetsNeeded: integer('sheets_needed'),
+  sheetsProduced: integer('sheets_produced'),
+  sheetsReceived: integer('sheets_received'),
+  wasteExternal: integer('waste_external'),
+  wasteInternal: integer('waste_internal'),
+  issueNotes: text('issue_notes'),
+  wcNotesToProd: text('wc_notes_to_prod'),
+  wcNotesByProd: text('wc_notes_by_prod'),
+  runDueDate: date('run_due_date'),
+  routingCompleteAt: timestamp('routing_complete_at'),
+  fetchedAt: timestamp('fetched_at').defaultNow().notNull(),
+}, (t) => [
+  index('idx_routings_station_priority').on(t.stationKey, t.productionPriority),
+  index('idx_routings_complete').on(t.complete),
+]);
+
+export const knackSyncRuns = pgTable('knack_sync_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: text('kind').notNull(), // 'floor_routings' etc.
+  syncedAt: timestamp('synced_at').defaultNow().notNull(),
+  status: text('status').notNull(), // 'ok' | 'error' | 'skipped'
+  errorMessage: text('error_message'),
+  fetched: integer('fetched'),
+  inserted: integer('inserted'),
+  hiddenSkipped: integer('hidden_skipped'),
+  durationMs: integer('duration_ms'),
 });
